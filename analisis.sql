@@ -10,6 +10,8 @@ CREATE TABLE roles (
     r_name ENUM('super admin', 'admin', 'director', 'nurse', 'physiotherapist', 'psychologist', 'social worker', 'not specified') DEFAULT 'not specified'
 );
 
+CREATE INDEX idx_role_name ON roles(r_name);
+
 -- Tabla de permisos
 CREATE TABLE permissions (
 	id INT AUTO_INCREMENT PRIMARY KEY,
@@ -17,6 +19,8 @@ CREATE TABLE permissions (
     id_role INT,
     FOREIGN KEY (id_role) REFERENCES roles(id)
 );
+
+CREATE INDEX idx_permission ON permissions(p_name);
 
 -- Tabla de usuarios
 CREATE TABLE users (
@@ -35,19 +39,25 @@ CREATE TABLE users (
     FOREIGN KEY (role_id) REFERENCES roles(id)
 );
 
+CREATE INDEX idx_user_email ON users(u_email);
+CREATE INDEX idx_user_identification ON users(u_identification);
+
 -- ####################################################################################
 
 -- Tabla para guardar los cambios de roles en usuarios
 CREATE TABLE role_changes (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT NOT NULL,          -- Usuario afectado
-    old_role VARCHAR(50),
-    new_role VARCHAR(50),
-    changed_by INT NOT NULL,       -- Admin que hizo el cambio
+    rc_old_role VARCHAR(50),
+    rc_new_role VARCHAR(50),
     changed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id),
+    id_user INT NOT NULL, 	      	-- Usuario afectado
+    changed_by INT NOT NULL,     	-- Admin que hizo el cambio
+    FOREIGN KEY (id_user) REFERENCES users(id),
     FOREIGN KEY (changed_by) REFERENCES users(id)
 );
+
+CREATE INDEX idx_rolechanges_user ON users(id);
+CREATE INDEX idx_rolechanges_changedby ON users(id);
 
 -- ####################################################################################
 
@@ -55,27 +65,24 @@ CREATE TABLE role_changes (
 CREATE TABLE programs (
 	id INT AUTO_INCREMENT PRIMARY KEY,
     p_name VARCHAR(300) NOT NULL,
-    p_description TEXT NOT NULL,
-	p_type ENUM('health', 'recreation', 'education', 'community', 'research', 'other') NOT NULL DEFAULT 'other',
-	p_observations TEXT NULL, 					-- Notas o comentarios
-    p_start_date DATE NOT NULL,
-    p_end_date DATE NULL,
-	p_budget DECIMAL(12,2) NULL,				-- Presupuesto destinado al programa
-    p_status ENUM('planned', 'in progress', 'completed', 'cancelled') NOT NULL DEFAULT 'planned',
     create_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE INDEX idx_program_name ON programs(p_name);
+
 -- Tabla para agregar participantes a un programa
-CREATE TABLE program_participants (
+CREATE TABLE sub_programs (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    pp_identification VARCHAR(20) NOT NULL,
-    pp_name VARCHAR(50) NOT NULL,
-    pp_f_last_name VARCHAR(50) NULL,
-    pp_s_last_name VARCHAR(50) NULL,
-    pp_role ENUM('employee', 'volunteer', 'external person', 'older_adult', 'not specified') DEFAULT 'not specified',
+    sp_name VARCHAR(50) NOT NULL,
     id_program INT,
     FOREIGN KEY (id_program) REFERENCES programs(id)
 );
+
+CREATE INDEX idx_subprogram_name ON sub_programs(sp_name);
+
+INSERT INTO programs (p_name) VALUES ('Hogar larga instancia'), ('Riesgo y abandono'), ('Se cuidan');
+INSERT INTO sub_programs (sp_name, id_program) VALUES ('Condición socioeconómica', (SELECT id FROM programs WHERE p_name = 'Hogar larga instancia'));
+INSERT INTO sub_programs (sp_name, id_program) VALUES ('Medios propios', (SELECT id FROM programs WHERE p_name = 'Hogar larga instancia'));
 
 -- ####################################################################################
 
@@ -87,7 +94,7 @@ CREATE TABLE older_adult_family (
     pf_f_last_name VARCHAR(50) NOT NULL,
     pf_s_last_name VARCHAR(50) NOT NULL,
     pf_phone_number VARCHAR(20) NULL,
-    pf_email VARCHAR(256) UNIQUE NOT NULL,
+    pf_email VARCHAR(256) NOT NULL,
     pf_kinship  ENUM(
 		'son', 'daughter', 'grandson', 'granddaughter', 'brother', 'sister',
         'nephew', 'niece', 'husband', 'wife', 'legal guardian', 'other', 'not specified'
@@ -95,7 +102,10 @@ CREATE TABLE older_adult_family (
     create_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
--- Tabla de adultos mayores
+CREATE INDEX idx_adult_family_identification ON older_adult_family(pf_identification);
+CREATE INDEX idx_adult_family_email ON older_adult_family(pf_email);
+
+-- Tabla de adultos mayores (SON PACIENTES Y DE ACÁ SALE EL EXPEDIENTE VIRTUAL)
 CREATE TABLE older_adult (
     id INT AUTO_INCREMENT PRIMARY KEY,
     oa_identification VARCHAR(20) NOT NULL UNIQUE,
@@ -104,7 +114,7 @@ CREATE TABLE older_adult (
     oa_s_last_name VARCHAR(50) NULL,
     oa_birthdate DATE,
     oa_marital_status ENUM('single', 'married', 'divorced', 'widowed', 'common law union', 'separated', 'not specified') DEFAULT 'not specified',
-    oa_dwelling TEXT NOT NULL,
+    oa_dwelling TEXT NULL,
     oa_years_schooling ENUM(
 		'no schooling', 'incomplete primary', 'complete primary', 'incomplete secondary',
         'complete secondary', 'technical degree', 'incomplete university', 'complete university', 
@@ -115,13 +125,13 @@ CREATE TABLE older_adult (
     oa_has_pension BOOLEAN NOT NULL DEFAULT FALSE,		-- ¿Tiene pensión?
     oa_other BOOLEAN NOT NULL DEFAULT FALSE, 	  		-- ¿Otro?
     oa_other_description VARCHAR(300) NULL,		  		-- Descripción para atributo anterior si es = TRUE
-    oa_area_of_origin VARCHAR(300) NOT NULL,
+    oa_area_of_origin VARCHAR(300) NULL,
 	oa_children_count TINYINT UNSIGNED DEFAULT 0,
     oa_status ENUM('alive', 'dead') DEFAULT 'alive',
     oa_death_date DATE NULL, 					  		-- En caso de que haya muerto, guardar fecha
-    oa_economic_income DECIMAL(10, 2) NOT NULL,	  		-- Ingreso económico del hogar (colones)
-    oa_phone_numner VARCHAR(20) NOT NULL,
-    oa_email VARCHAR(256) NOT NULL,
+    oa_economic_income DECIMAL(10, 2) NULL,	  		-- Ingreso económico del hogar (colones)
+    oa_phone_numner VARCHAR(20) NULL,
+    oa_email VARCHAR(256) NULL,
     oa_profile_photo_url VARCHAR(255) NULL,
     -- adicionales
 	oa_gender ENUM('male', 'female', 'not specified') DEFAULT 'not specified',
@@ -134,6 +144,12 @@ CREATE TABLE older_adult (
     FOREIGN KEY (id_family) REFERENCES older_adult_family(id)
 );
 
+CREATE INDEX idx_olderadult_identification ON older_adult(oa_identification);
+CREATE INDEX idx_olderadult_name ON older_adult(oa_name);
+CREATE INDEX idx_olderadult_f_lastname ON older_adult(oa_f_last_name);
+CREATE INDEX idx_olderadult_email ON older_adult(oa_email);
+CREATE INDEX idx_olderadult_birthdate ON older_adult(oa_birthdate);
+
 -- Tabla de números de emergencia para adulto mayor cuando es paciente
 CREATE TABLE emergency_contacts (
 	id INT AUTO_INCREMENT PRIMARY KEY,
@@ -143,20 +159,25 @@ CREATE TABLE emergency_contacts (
     FOREIGN KEY (id_older_adult) REFERENCES older_adult(id)
 );
 
+CREATE INDEX idx_emergency_number ON emergency_contacts(en_phone_number);
+
 -- ####################################################################################
 
 -- Tabla para guardar los cambios en datos de adultos mayores
 CREATE TABLE older_adult_updates (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    id_older_adult INT NOT NULL,
-    field_changed VARCHAR(100) NOT NULL,
-    old_value TEXT NULL,
-    new_value TEXT NULL,
-    changed_by INT NOT NULL,
+    oau_field_changed VARCHAR(100) NOT NULL,
+    oau_old_value TEXT NULL,
+    oau_new_value TEXT NULL,
     changed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	id_older_adult INT NOT NULL,
+    changed_by INT NOT NULL,
     FOREIGN KEY (id_older_adult) REFERENCES older_adult(id),
     FOREIGN KEY (changed_by) REFERENCES users(id)
 );
+
+CREATE INDEX idx_adultupdates_adult ON older_adult_updates(id_older_adult);
+CREATE INDEX idx_adultupdates_field ON older_adult_updates(oau_field_changed);
 
 -- ####################################################################################
 
@@ -166,11 +187,15 @@ CREATE TABLE clinical_conditions (
 	cc_name VARCHAR(55) NOT NULL
 );
 
+CREATE INDEX idx_clinicalcondition_name ON clinical_conditions(cc_name);
+
 -- Tabla de tipos de vacunas
 CREATE TABLE vaccines (
 	id INT AUTO_INCREMENT PRIMARY KEY,
     v_name VARCHAR(80) NOT NULL
 );
+
+CREATE INDEX idx_vaccines_name ON vaccines(v_name);
 
 -- Tabla de antecedentes clínicos de un paciente
 CREATE TABLE clinical_history (
@@ -188,6 +213,8 @@ CREATE TABLE clinical_history (
     ch_vision_hearing BOOLEAN NOT NULL DEFAULT FALSE,		-- TRUE = tiene problemas de audición, FALSE = no tiene problemas
 	create_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX idx_clinicalhistory_createat ON clinical_history(create_at);
 
 -- Tabla relación de clinical_conditions y clinical_history
 CREATE TABLE clinical_history_and_conditions (
@@ -215,6 +242,8 @@ CREATE TABLE clinical_medication (
     FOREIGN KEY (id_clinical_history) REFERENCES clinical_history(id)
 );
 
+CREATE INDEX idx_clinicalmedication_medication ON clinical_medication(m_medication);
+
 -- ####################################################################################
 
 -- Tabla para entradas y salidas al hogar
@@ -233,6 +262,10 @@ CREATE TABLE entrances_exits (
 	create_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE INDEX idx_entrancesexits_type ON entrances_exits(ee_type);
+CREATE INDEX idx_entrancesexits_identification ON entrances_exits(ee_identification);
+CREATE INDEX idx_entrancesexits_name ON entrances_exits(ee_name);
+
 -- ####################################################################################
 
 -- Tabla de áreas especializadas del hogar
@@ -247,6 +280,9 @@ CREATE TABLE specialized_area (
     id_manager INT,
     FOREIGN KEY (id_manager) REFERENCES users(id)
 );
+
+CREATE INDEX idx_area_name ON specialized_area(sa_name);
+CREATE INDEX idx_area_email ON specialized_area(sa_contact_email);
 
 -- Tabla de citas y atenciones en áreas especializadas
 CREATE TABLE specialized_appointment (
@@ -268,6 +304,10 @@ CREATE TABLE specialized_appointment (
     FOREIGN KEY (id_staff) REFERENCES users(id)
 );
 
+CREATE INDEX idx_appointment_date ON specialized_appointment(sa_appointment_date);
+CREATE INDEX idx_appointment_priority ON specialized_appointment(sa_priority);
+CREATE INDEX idx_appointment_createat ON specialized_appointment(create_at);
+
 -- ####################################################################################
 
 -- Tabla para registrar datos de cita con enfermería
@@ -282,10 +322,12 @@ CREATE TABLE nursing_records (
     nr_appetite ENUM('good', 'regular', 'poor') DEFAULT 'regular',
     nr_sleep_quality ENUM('good', 'regular', 'poor') DEFAULT 'regular',
     nr_notes TEXT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    id_appointment INT,
+    create_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    id_appointment INT NOT NULL,
     FOREIGN KEY (id_appointment) REFERENCES specialized_appointment(id)
 );
+
+CREATE INDEX idx_nursing_createat ON nursing_records(create_at);
 
 -- Tabla para guardar datos de cita con fisioterapia
 CREATE TABLE physiotherapy_sessions (
@@ -297,10 +339,13 @@ CREATE TABLE physiotherapy_sessions (
     ps_treatment_description TEXT,
     ps_exercise_plan TEXT,
     ps_progress_notes TEXT,    
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    id_appointment INT,
+    create_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    id_appointment INT NOT NULL,
     FOREIGN KEY (id_appointment) REFERENCES specialized_appointment(id)
 );
+
+CREATE INDEX idx_physiotherapy_createat ON physiotherapy_sessions(create_at);
+CREATE INDEX idx_physiotherapy_type ON physiotherapy_sessions(ps_type);
 
 -- Tabla para guardar datos de cita con psicólogo
 CREATE TABLE psychology_sessions (
@@ -312,10 +357,13 @@ CREATE TABLE psychology_sessions (
     psy_observations TEXT,
     psy_therapy_goal TEXT,
     psy_progress TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    create_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     id_appointment INT,
     FOREIGN KEY (id_appointment) REFERENCES specialized_appointment(id)
 );
+
+CREATE INDEX idx_psychology_createat ON psychology_sessions(create_at);
+CREATE INDEX idx_psychology_type ON psychology_sessions(psy_session_type);
 
 -- Tabla para guardar datos de trabajo socia
 CREATE TABLE social_work_reports (
@@ -327,10 +375,13 @@ CREATE TABLE social_work_reports (
     sw_social_support TEXT NULL,
     sw_observations TEXT,
     sw_recommendations TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    create_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     id_appointment INT,
     FOREIGN KEY (id_appointment) REFERENCES specialized_appointment(id)
 );
+
+CREATE INDEX idx_socialwork_createat ON social_work_reports(create_at);
+CREATE INDEX idx_socialwork_date ON social_work_reports(sw_date);
 
 -- ####################################################################################
 
@@ -353,6 +404,9 @@ CREATE TABLE medical_record (
     FOREIGN KEY (id_staff) REFERENCES users(id)
 );
 
+CREATE INDEX idx_medicalrecord_createat ON medical_record(create_at);
+CREATE INDEX idx_medicalrecord_date ON medical_record(mr_record_date);
+
 -- ####################################################################################
 
 -- Tabla de registros de usuarios
@@ -367,6 +421,9 @@ CREATE TABLE digital_record (
     FOREIGN KEY (dr_user_id) REFERENCES users(id)
 );
 
+CREATE INDEX idx_digital_name ON digital_record(dr_table_name);
+CREATE INDEX idx_digital_action ON digital_record(dr_action);
+
 -- Tabla de auditoría (conteo de auditorías generadas)
 CREATE TABLE audit_reports (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -378,6 +435,41 @@ CREATE TABLE audit_reports (
     id_generator INT,
     FOREIGN KEY (id_generator) REFERENCES users(id)
 );
+
+CREATE INDEX idx_audit_type ON audit_reports(ar_type);
+CREATE INDEX idx_audit_create ON audit_reports(create_at);
+
+-- ####################################################################################
+
+-- Tabla para notificaciones y alertas
+CREATE TABLE notifications (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    n_title VARCHAR(150) NOT NULL,
+    n_message TEXT NOT NULL,
+    n_send_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+    n_sent BOOLEAN DEFAULT FALSE,
+    create_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    id_sender INT NOT NULL,
+    FOREIGN KEY (id_sender) REFERENCES users(id)
+);
+
+CREATE INDEX idx_notification_title ON notifications(n_title);
+CREATE INDEX idx_notification_date ON notifications(n_send_date);
+CREATE INDEX idx_notification_createat ON notifications(create_at);
+
+-- Tabla que guarda las rutas de los archivos adjuntos de una notificación
+CREATE TABLE notification_attachment (
+	id INT AUTO_INCREMENT PRIMARY KEY,
+    na_file_name VARCHAR(150) NOT NULL,
+    na_file_path VARCHAR(255) NOT NULL,
+    na_file_mime_type VARCHAR(100) NOT NULL, 	-- Guarda el tipo del archivo (se valida en backend)
+    na_file_size_kb INT NOT NULL,			 	-- Tamaño en KB del archivo (no mayor a 5 MB)
+    id_notification INT NOT NULL,
+    FOREIGN KEY (id_notification) REFERENCES notifications(id)
+);
+
+CREATE INDEX idx_attachment_name ON notification_attachment(na_file_name);
+CREATE INDEX idx_attachment_path ON notification_attachment(na_file_path);
 
 -- ######################################################################################################################################################
 
