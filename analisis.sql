@@ -258,8 +258,6 @@ CREATE INDEX idx_adultupdates_field ON older_adult_updates(oau_field_changed);
 
 -- ####################################################################################
 
--- PROCEDIMIENTOS PARA INSERTAR UN ADULTO MAYOR, HISTORIAL CLÍNICO (GUARDAR ID), Y ASOCIAS LAS VACUNAS, CONDICIONES Y MEDICACIÓN.
-
 -- Tabla de padecimeintos
 CREATE TABLE clinical_conditions (
 	id INT AUTO_INCREMENT PRIMARY KEY,
@@ -268,6 +266,11 @@ CREATE TABLE clinical_conditions (
 -- AGREGAR INSERT DE CONDICIONES
 CREATE INDEX idx_clinicalcondition_name ON clinical_conditions(cc_name);
 
+INSERT INTO clinical_conditions (cc_name) VALUES 
+	('HTA'), ('DBT'), ('Dislip'), ('IRC'), ('Cardio Isq.'), ('ACV'), ('Amputación'), 
+    ('Tabaquismo'), ('Alcoholismo'), ('Parkinson'), ('Demencia'), ('Prostatismo'), ('Incontinencia urinaria')
+;
+
 -- Tabla de tipos de vacunas
 CREATE TABLE vaccines (
 	id INT AUTO_INCREMENT PRIMARY KEY,
@@ -275,6 +278,8 @@ CREATE TABLE vaccines (
 );
 -- AGREGAR INSERT DE VACUNAS
 CREATE INDEX idx_vaccines_name ON vaccines(v_name);
+
+INSERT INTO vaccines (v_name) VALUES ('dT'), ('Hep B'), ('Gripe'), ('Neumococo');
 
 -- Tabla de antecedentes clínicos de un paciente
 CREATE TABLE clinical_history (
@@ -362,6 +367,12 @@ CREATE TABLE specialized_area (
 
 CREATE INDEX idx_area_name ON specialized_area(sa_name);
 CREATE INDEX idx_area_email ON specialized_area(sa_contact_email);
+
+INSERT INTO specialized_area (sa_name, sa_description, sa_contact_email, sa_contact_phone, sa_is_active) VALUES 
+('nursing', 'Área especializada en enfemería', 'enfermeria@example.com', '+506 23234348', 1),
+('physiotherapy', 'Área especializada en fisioterapia', 'fisioterapia@example.com', '+506 23234349', 1),
+('psychology', 'Área especializada en psicología', 'psicologia@example.com', '+506 23234347', 1),
+('social_work', 'Área especializada en trabajo social', 'trabajosocial@example.com', '+506 23234346', 1);
 
 -- Tabla de citas y atenciones en áreas especializadas
 CREATE TABLE specialized_appointment (
@@ -554,116 +565,35 @@ CREATE TABLE notification_attachment (
 CREATE INDEX idx_attachment_name ON notification_attachment(na_file_name);
 CREATE INDEX idx_attachment_path ON notification_attachment(na_file_path);
 
--- ######################################################################################################################################################
--- PROCEDIMIENTOS ALMACENADOS
+-- $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
 
-DELIMITER //
-CREATE PROCEDURE generate_audit_report (
-    IN audit_type ENUM('general_actions', 'role_changes', 'older_adult_updates', 'system_access'),
-    IN start_date DATETIME,
-    IN end_date DATETIME,
-    IN admin_id INT
-)
-BEGIN
-    DECLARE next_audit_number INT;
-
-    -- Obtener número consecutivo de auditoría
-    SELECT IFNULL(MAX(ar_audit_number), 0) + 1 INTO next_audit_number FROM audit_reports;
-
-    -- Insertar registro en audit_reports
-    INSERT INTO audit_reports (
-        ar_audit_number, ar_type, ar_start_date, ar_end_date, id_generator
-    ) VALUES (
-        next_audit_number, audit_type, start_date, end_date, admin_id
-    );
-
-    -- Devolver datos según tipo
-    CASE audit_type
-        WHEN 'general_actions' THEN
-            SELECT 
-				u.id,
-                u.u_name AS user_name,
-                dr.dr_action AS action,
-                dr.dr_table_name AS table_name,
-                dr.dr_record_id AS record_id,
-                dr.dr_description AS description,
-                dr.dr_timestamp AS timestamp
-            FROM digital_record dr
-            INNER JOIN users u ON dr.dr_user_id = u.id
-            WHERE dr.dr_timestamp BETWEEN start_date AND end_date
-            ORDER BY dr.dr_timestamp DESC;
-
-        WHEN 'role_changes' THEN
-            SELECT 
-                u1.u_name AS admin_who_changed,
-                u2.u_name AS user_affected,
-                rc.old_role,
-                rc.new_role,
-                rc.changed_at
-            FROM role_changes rc
-            INNER JOIN users u1 ON rc.changed_by = u1.id
-            INNER JOIN users u2 ON rc.user_id = u2.id
-            WHERE rc.changed_at BETWEEN start_date AND end_date
-            ORDER BY rc.changed_at DESC;
-
-        WHEN 'older_adult_updates' THEN
-            SELECT 
-                u.u_name AS user_name,
-                oaua.field_changed,
-                oaua.old_value,
-                oaua.new_value,
-                oaua.changed_at
-            FROM older_adult_updates oaua
-            INNER JOIN users u ON oaua.changed_by = u.id
-            WHERE oaua.changed_at BETWEEN start_date AND end_date
-            ORDER BY oaua.changed_at DESC;
-
-        WHEN 'system_access' THEN
-            SELECT 
-                u.u_name AS user_name,
-                dr.dr_action AS action,
-                dr.dr_timestamp AS timestamp,
-                dr.dr_description AS description
-            FROM digital_record dr
-            INNER JOIN users u ON dr.dr_user_id = u.id
-            WHERE dr.dr_action IN ('login', 'logout')
-            AND dr.dr_timestamp BETWEEN start_date AND end_date
-            ORDER BY dr.dr_timestamp DESC;
-    END CASE;
-END //
-DELIMITER ;
-
--- Procedimiento para limpiar sesiones expiradas (ejecutar periódicamente)
-DELIMITER //
+-- SP para limpiar sesiones expiradas (ejecutar periódicamente)
+DELIMITER $$
 CREATE PROCEDURE clean_expired_sessions()
 BEGIN
     UPDATE user_sessions 
     SET is_active = FALSE 
     WHERE expires_at < NOW() AND is_active = TRUE;
     
-    -- Opcional: eliminar sesiones muy antiguas (más de 30 días inactivas)
     DELETE FROM user_sessions 
     WHERE is_active = FALSE 
     AND last_activity < DATE_SUB(NOW(), INTERVAL 30 DAY);
-END //
+END$$
 DELIMITER ;
 
--- Procedimiento para limpiar tokens expirados
-DELIMITER //
+DELIMITER $$
 CREATE PROCEDURE clean_expired_tokens()
 BEGIN
-    -- Limpiar tokens de reset de contraseña expirados
     DELETE FROM password_reset_tokens 
     WHERE expires_at < NOW() AND used = FALSE;
     
-    -- Limpiar tokens de verificación de email expirados
     DELETE FROM email_verification_tokens 
     WHERE expires_at < NOW() AND verified = FALSE;
-END //
+END$$
 DELIMITER ;
 
--- Procedimiento para obtener estadísticas de intentos de login fallidos
-DELIMITER //
+-- SP para obtener estadísticas de intentos de login fallidos
+DELIMITER $$
 CREATE PROCEDURE get_failed_login_stats(
     IN time_window_hours INT
 )
@@ -681,17 +611,10 @@ BEGIN
     GROUP BY email, ip_address, failure_reason
     HAVING failed_attempts >= 3
     ORDER BY failed_attempts DESC, last_attempt DESC;
-END //
+END$$
 DELIMITER ;
 
--- =====================================================================================
--- PROCEDIMIENTOS ALMACENADOS PARA EXPEDIENTES VIRTUALES
--- Hogar de Ancianos - Sistema de Gestión
--- =====================================================================================
-
--- =====================================================================================
--- 1. PROCEDIMIENTO PRINCIPAL PARA CREAR EXPEDIENTE VIRTUAL
--- =====================================================================================
+-- SP crea la ficha virtual de un adulto mayor (registra en las tablas correspondientes)
 DELIMITER $$
 CREATE PROCEDURE CreateVirtualFile(
     IN p_oa_identification VARCHAR(20),
@@ -718,7 +641,7 @@ CREATE PROCEDURE CreateVirtualFile(
     IN p_oa_gender VARCHAR(15),
     IN p_oa_blood_type VARCHAR(10),
     IN p_program_id INT,
-    -- Parámetros del familiar
+    
     IN p_pf_identification VARCHAR(20),
     IN p_pf_name VARCHAR(50),
     IN p_pf_f_last_name VARCHAR(50),
@@ -726,7 +649,7 @@ CREATE PROCEDURE CreateVirtualFile(
     IN p_pf_phone_number VARCHAR(20),
     IN p_pf_email VARCHAR(256),
     IN p_pf_kinship VARCHAR(20),
-    -- Parámetros del historial clínico
+    
     IN p_ch_frequent_falls BOOLEAN,
     IN p_ch_weight DECIMAL(5,2),
     IN p_ch_height DECIMAL(4,2),
@@ -738,12 +661,12 @@ CREATE PROCEDURE CreateVirtualFile(
     IN p_ch_rcvg VARCHAR(20),
     IN p_ch_vision_problems BOOLEAN,
     IN p_ch_vision_hearing BOOLEAN,
-    -- Arrays de IDs (como strings separados por comas)
-    IN p_clinical_conditions_ids VARCHAR(500),  -- "1,5,8"
-    IN p_vaccines_ids VARCHAR(500),             -- "1,3,7"
-    IN p_subprograms_ids VARCHAR(500),          -- "1"
-    -- Medicamentos (como JSON string ya que pueden ser múltiples con diferentes campos)
-    IN p_medications_json TEXT                   -- '[{"medication":"Losartán 50mg","dosage":"1 tableta cada 12 horas","type":"chronic"}]'
+    
+    IN p_clinical_conditions_ids VARCHAR(500),
+    IN p_vaccines_ids VARCHAR(500),
+    IN p_subprograms_ids VARCHAR(500),
+    
+    IN p_medications_json TEXT
 )
 BEGIN
     DECLARE v_older_adult_id INT DEFAULT NULL;
@@ -755,11 +678,11 @@ BEGIN
     DECLARE v_pos INT DEFAULT 0;
     DECLARE v_length INT DEFAULT 0;
     DECLARE v_medications_count INT DEFAULT 0;
-    -- Variables para procesar strings de IDs
+    
     DECLARE v_conditions_list VARCHAR(500);
     DECLARE v_vaccines_list VARCHAR(500);
     DECLARE v_subprograms_list VARCHAR(500);
-    -- Handler para errores
+    
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
     BEGIN
         ROLLBACK;
@@ -767,9 +690,9 @@ BEGIN
             v_error_message = MESSAGE_TEXT;
         SELECT CONCAT('Error: ', v_error_message) as error_message;
     END;
-    -- Iniciar transacción
+    
     START TRANSACTION;
-    -- Validaciones básicas
+    
     IF p_oa_identification IS NULL OR p_oa_identification = '' THEN
         SET v_error_message = 'La identificación del adulto mayor es requerida';
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = v_error_message;
@@ -785,13 +708,11 @@ BEGIN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = v_error_message;
     END IF;
     
-    -- Validar que no exista ya un adulto mayor con esa identificación
     IF EXISTS (SELECT 1 FROM older_adult WHERE oa_identification = p_oa_identification) THEN
         SET v_error_message = CONCAT('Ya existe un adulto mayor con la identificación: ', p_oa_identification);
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = v_error_message;
     END IF;
     
-    -- Validar que el programa existe
     IF p_program_id IS NOT NULL THEN
         IF NOT EXISTS (SELECT 1 FROM programs WHERE id = p_program_id) THEN
             SET v_error_message = CONCAT('El programa con ID ', p_program_id, ' no existe');
@@ -799,7 +720,6 @@ BEGIN
         END IF;
     END IF;
     
-    -- Validar datos del familiar
     IF p_pf_identification IS NULL OR p_pf_identification = '' THEN
         SET v_error_message = 'La identificación del familiar es requerida';
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = v_error_message;
@@ -815,7 +735,6 @@ BEGIN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = v_error_message;
     END IF;
     
-    -- 1. INSERTAR FAMILIAR (primero para obtener su ID)
     INSERT INTO older_adult_family (
         pf_identification, pf_name, pf_f_last_name, pf_s_last_name,
         pf_phone_number, pf_email, pf_kinship
@@ -826,7 +745,6 @@ BEGIN
     
     SET v_family_id = LAST_INSERT_ID();
     
-    -- 2. INSERTAR ADULTO MAYOR
     INSERT INTO older_adult (
         oa_identification, oa_name, oa_f_last_name, oa_s_last_name, oa_birthdate,
         oa_marital_status, oa_dwelling, oa_years_schooling, oa_previous_work,
@@ -845,7 +763,6 @@ BEGIN
     
     SET v_older_adult_id = LAST_INSERT_ID();
     
-    -- 3. INSERTAR HISTORIAL CLÍNICO
     INSERT INTO clinical_history (
         ch_frequent_falls, ch_weight, ch_height, ch_imc, ch_blood_pressure,
         ch_neoplasms, ch_neoplasms_description, ch_observations, ch_rcvg,
@@ -858,7 +775,6 @@ BEGIN
     
     SET v_clinical_history_id = LAST_INSERT_ID();
     
-    -- 4. INSERTAR CONDICIONES CLÍNICAS
     IF p_clinical_conditions_ids IS NOT NULL AND p_clinical_conditions_ids != '' THEN
         SET v_conditions_list = CONCAT(p_clinical_conditions_ids, ',');
         SET v_pos = 1;
@@ -870,7 +786,7 @@ BEGIN
                 SET v_conditions_list = SUBSTRING(v_conditions_list, v_pos + 1);
                 
                 IF v_current_id != '' THEN
-                    -- Validar que la condición existe
+    
                     IF NOT EXISTS (SELECT 1 FROM clinical_conditions WHERE id = CAST(v_current_id AS UNSIGNED)) THEN
                         SET v_error_message = CONCAT('La condición clínica con ID ', v_current_id, ' no existe');
                         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = v_error_message;
@@ -908,7 +824,6 @@ BEGIN
         END WHILE;
     END IF;
     
-    -- 6. INSERTAR MEDICAMENTOS
     IF p_medications_json IS NOT NULL AND p_medications_json != '' AND p_medications_json != '[]' THEN
         SET v_medications_count = JSON_LENGTH(p_medications_json);
         
@@ -927,7 +842,6 @@ BEGIN
         END IF;
     END IF;
     
-    -- 7. INSERTAR SUBPROGRAMAS (si existen)
     IF p_subprograms_ids IS NOT NULL AND p_subprograms_ids != '' THEN
         SET v_subprograms_list = CONCAT(p_subprograms_ids, ',');
         SET v_pos = 1;
@@ -939,7 +853,7 @@ BEGIN
                 SET v_subprograms_list = SUBSTRING(v_subprograms_list, v_pos + 1);
                 
                 IF v_current_id != '' THEN
-                    -- Validar que el subprograma existe y pertenece al programa
+    
                     IF NOT EXISTS (
                         SELECT 1 FROM sub_programs 
                         WHERE id = CAST(v_current_id AS UNSIGNED) AND id_program = p_program_id
@@ -954,21 +868,19 @@ BEGIN
             END IF;
         END WHILE;
     END IF;
-    -- Confirmar transacción
+    
     COMMIT;
-    -- Retornar resultado exitoso
+    
     SELECT 
         v_older_adult_id as older_adult_id,
         v_family_id as family_id,
         v_clinical_history_id as clinical_history_id,
         'SUCCESS' as status,
         'Expediente virtual creado exitosamente' as message;
-
 END$$
 DELIMITER ;
--- =====================================================================================
--- 2. PROCEDIMIENTO PARA ELIMINAR EXPEDIENTE VIRTUAL
--- =====================================================================================
+
+-- SP para eliminar la ficha virtual de un adulto mayor mediante identificación (cédula)
 DELIMITER $$
 CREATE PROCEDURE DeleteVirtualFile(
     IN p_older_adult_identification VARCHAR(20)
@@ -979,7 +891,6 @@ BEGIN
     DECLARE v_clinical_history_id INT DEFAULT NULL;
     DECLARE v_error_message VARCHAR(500);
     
-    -- Handler para errores
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
     BEGIN
         ROLLBACK;
@@ -988,10 +899,8 @@ BEGIN
         SELECT CONCAT('Error: ', v_error_message) as error_message;
     END;
     
-    -- Iniciar transacción
     START TRANSACTION;
     
-    -- Validar que el adulto mayor existe
     SELECT id, id_family INTO v_older_adult_id, v_family_id
     FROM older_adult 
     WHERE oa_identification = p_older_adult_identification;
@@ -1001,55 +910,40 @@ BEGIN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = v_error_message;
     END IF;
     
-    -- Obtener el ID del historial clínico más reciente para este adulto mayor
-    -- Nota: Como no hay relación directa, asumimos el más reciente por fecha
     SELECT MAX(id) INTO v_clinical_history_id FROM clinical_history 
     WHERE create_at >= (SELECT create_at FROM older_adult WHERE id = v_older_adult_id);
     
-    -- Eliminar relaciones de subprogramas
     DELETE FROM older_adult_subprogram WHERE id_older_adult = v_older_adult_id;
     
-    -- Eliminar contactos de emergencia
     DELETE FROM emergency_contacts WHERE id_older_adult = v_older_adult_id;
     
-    -- Si existe historial clínico, eliminar sus relaciones
     IF v_clinical_history_id IS NOT NULL THEN
-        -- Eliminar medicamentos
         DELETE FROM clinical_medication WHERE id_clinical_history = v_clinical_history_id;
         
-        -- Eliminar relaciones con condiciones clínicas
         DELETE FROM clinical_history_and_conditions WHERE id_c_history = v_clinical_history_id;
         
-        -- Eliminar relaciones con vacunas
         DELETE FROM vaccines_and_clinical_history WHERE id_c_history = v_clinical_history_id;
         
-        -- Eliminar historial clínico
         DELETE FROM clinical_history WHERE id = v_clinical_history_id;
     END IF;
     
-    -- Eliminar el adulto mayor (esto eliminará automáticamente las referencias por CASCADE)
     DELETE FROM older_adult WHERE id = v_older_adult_id;
     
-    -- Eliminar el familiar si existe
     IF v_family_id IS NOT NULL THEN
         DELETE FROM older_adult_family WHERE id = v_family_id;
     END IF;
     
-    -- Confirmar transacción
     COMMIT;
     
-    -- Retornar resultado exitoso
     SELECT 
         v_older_adult_id as deleted_older_adult_id,
         p_older_adult_identification as identification,
         'SUCCESS' as status,
         'Expediente virtual eliminado exitosamente' as message;
-
 END$$
 DELIMITER ;
--- =====================================================================================
--- 3. PROCEDIMIENTO PARA OBTENER EXPEDIENTE VIRTUAL COMPLETO
--- =====================================================================================
+
+-- SP para obtener la ficha virtual de un adulto mayor a través de identificaicón (cédula)
 DELIMITER $$
 CREATE PROCEDURE GetVirtualFile(
     IN p_older_adult_identification VARCHAR(20)
