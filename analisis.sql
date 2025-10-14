@@ -162,7 +162,7 @@ CREATE TABLE older_adult_family (
     pf_f_last_name VARCHAR(50) NOT NULL,
     pf_s_last_name VARCHAR(50) NOT NULL,
     pf_phone_number VARCHAR(20) NULL,
-    pf_email VARCHAR(256) NOT NULL,
+    pf_email VARCHAR(256) NULL,
     pf_kinship  ENUM(
 		'son', 'daughter', 'grandson', 'granddaughter', 'brother', 'sister',
         'nephew', 'niece', 'husband', 'wife', 'legal guardian', 'other', 'not specified'
@@ -218,6 +218,15 @@ CREATE INDEX idx_olderadult_f_lastname ON older_adult(oa_f_last_name);
 CREATE INDEX idx_olderadult_email ON older_adult(oa_email);
 CREATE INDEX idx_olderadult_birthdate ON older_adult(oa_birthdate);
 
+-- Tabla para asociar un subprograma a un adulto mayor
+-- SOLO SE USA CUANDO EL PROGRAMA ASIGNADO ES "HOGAR LARGA INSTANCIA"
+CREATE TABLE older_adult_subprogram (
+	id_older_adult INT NOT NULL,
+    id_sub_program INT NOT NULL,
+    FOREIGN KEY (id_older_adult) REFERENCES older_adult(id) ON DELETE CASCADE,
+	FOREIGN KEY (id_sub_program) REFERENCES sub_programs(id) ON DELETE CASCADE
+);
+
 -- Tabla de números de emergencia para adulto mayor cuando es paciente
 CREATE TABLE emergency_contacts (
 	id INT AUTO_INCREMENT PRIMARY KEY,
@@ -249,12 +258,14 @@ CREATE INDEX idx_adultupdates_field ON older_adult_updates(oau_field_changed);
 
 -- ####################################################################################
 
+-- PROCEDIMIENTOS PARA INSERTAR UN ADULTO MAYOR, HISTORIAL CLÍNICO (GUARDAR ID), Y ASOCIAS LAS VACUNAS, CONDICIONES Y MEDICACIÓN.
+
 -- Tabla de padecimeintos
 CREATE TABLE clinical_conditions (
 	id INT AUTO_INCREMENT PRIMARY KEY,
 	cc_name VARCHAR(55) NOT NULL
 );
-
+-- AGREGAR INSERT DE CONDICIONES
 CREATE INDEX idx_clinicalcondition_name ON clinical_conditions(cc_name);
 
 -- Tabla de tipos de vacunas
@@ -262,7 +273,7 @@ CREATE TABLE vaccines (
 	id INT AUTO_INCREMENT PRIMARY KEY,
     v_name VARCHAR(80) NOT NULL
 );
-
+-- AGREGAR INSERT DE VACUNAS
 CREATE INDEX idx_vaccines_name ON vaccines(v_name);
 
 -- Tabla de antecedentes clínicos de un paciente
@@ -673,14 +684,401 @@ BEGIN
 END //
 DELIMITER ;
 
+-- =====================================================================================
+-- PROCEDIMIENTOS ALMACENADOS PARA EXPEDIENTES VIRTUALES
+-- Hogar de Ancianos - Sistema de Gestión
+-- =====================================================================================
 
+-- =====================================================================================
+-- 1. PROCEDIMIENTO PRINCIPAL PARA CREAR EXPEDIENTE VIRTUAL
+-- =====================================================================================
+DELIMITER $$
+CREATE PROCEDURE CreateVirtualFile(
+    IN p_oa_identification VARCHAR(20),
+    IN p_oa_name VARCHAR(50),
+    IN p_oa_f_last_name VARCHAR(50),
+    IN p_oa_s_last_name VARCHAR(50),
+    IN p_oa_birthdate DATE,
+    IN p_oa_marital_status VARCHAR(20),
+    IN p_oa_dwelling TEXT,
+    IN p_oa_years_schooling VARCHAR(50),
+    IN p_oa_previous_work VARCHAR(300),
+    IN p_oa_is_retired BOOLEAN,
+    IN p_oa_has_pension BOOLEAN,
+    IN p_oa_other BOOLEAN,
+    IN p_oa_other_description VARCHAR(300),
+    IN p_oa_area_of_origin VARCHAR(300),
+    IN p_oa_children_count TINYINT,
+    IN p_oa_status VARCHAR(10),
+    IN p_oa_death_date DATE,
+    IN p_oa_economic_income DECIMAL(10,2),
+    IN p_oa_phone_numner VARCHAR(20),
+    IN p_oa_email VARCHAR(256),
+    IN p_oa_profile_photo_url VARCHAR(255),
+    IN p_oa_gender VARCHAR(15),
+    IN p_oa_blood_type VARCHAR(10),
+    IN p_program_id INT,
+    -- Parámetros del familiar
+    IN p_pf_identification VARCHAR(20),
+    IN p_pf_name VARCHAR(50),
+    IN p_pf_f_last_name VARCHAR(50),
+    IN p_pf_s_last_name VARCHAR(50),
+    IN p_pf_phone_number VARCHAR(20),
+    IN p_pf_email VARCHAR(256),
+    IN p_pf_kinship VARCHAR(20),
+    -- Parámetros del historial clínico
+    IN p_ch_frequent_falls BOOLEAN,
+    IN p_ch_weight DECIMAL(5,2),
+    IN p_ch_height DECIMAL(4,2),
+    IN p_ch_imc DECIMAL(4,1),
+    IN p_ch_blood_pressure VARCHAR(7),
+    IN p_ch_neoplasms BOOLEAN,
+    IN p_ch_neoplasms_description VARCHAR(300),
+    IN p_ch_observations TEXT,
+    IN p_ch_rcvg VARCHAR(20),
+    IN p_ch_vision_problems BOOLEAN,
+    IN p_ch_vision_hearing BOOLEAN,
+    -- Arrays de IDs (como strings separados por comas)
+    IN p_clinical_conditions_ids VARCHAR(500),  -- "1,5,8"
+    IN p_vaccines_ids VARCHAR(500),             -- "1,3,7"
+    IN p_subprograms_ids VARCHAR(500),          -- "1"
+    -- Medicamentos (como JSON string ya que pueden ser múltiples con diferentes campos)
+    IN p_medications_json TEXT                   -- '[{"medication":"Losartán 50mg","dosage":"1 tableta cada 12 horas","type":"chronic"}]'
+)
+BEGIN
+    DECLARE v_older_adult_id INT DEFAULT NULL;
+    DECLARE v_family_id INT DEFAULT NULL;
+    DECLARE v_clinical_history_id INT DEFAULT NULL;
+    DECLARE v_error_message VARCHAR(500);
+    DECLARE v_counter INT DEFAULT 0;
+    DECLARE v_current_id VARCHAR(10);
+    DECLARE v_pos INT DEFAULT 0;
+    DECLARE v_length INT DEFAULT 0;
+    DECLARE v_medications_count INT DEFAULT 0;
+    -- Variables para procesar strings de IDs
+    DECLARE v_conditions_list VARCHAR(500);
+    DECLARE v_vaccines_list VARCHAR(500);
+    DECLARE v_subprograms_list VARCHAR(500);
+    -- Handler para errores
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        GET DIAGNOSTICS CONDITION 1
+            v_error_message = MESSAGE_TEXT;
+        SELECT CONCAT('Error: ', v_error_message) as error_message;
+    END;
+    -- Iniciar transacción
+    START TRANSACTION;
+    -- Validaciones básicas
+    IF p_oa_identification IS NULL OR p_oa_identification = '' THEN
+        SET v_error_message = 'La identificación del adulto mayor es requerida';
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = v_error_message;
+    END IF;
+    
+    IF p_oa_name IS NULL OR p_oa_name = '' THEN
+        SET v_error_message = 'El nombre del adulto mayor es requerido';
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = v_error_message;
+    END IF;
+    
+    IF p_oa_f_last_name IS NULL OR p_oa_f_last_name = '' THEN
+        SET v_error_message = 'El primer apellido del adulto mayor es requerido';
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = v_error_message;
+    END IF;
+    
+    -- Validar que no exista ya un adulto mayor con esa identificación
+    IF EXISTS (SELECT 1 FROM older_adult WHERE oa_identification = p_oa_identification) THEN
+        SET v_error_message = CONCAT('Ya existe un adulto mayor con la identificación: ', p_oa_identification);
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = v_error_message;
+    END IF;
+    
+    -- Validar que el programa existe
+    IF p_program_id IS NOT NULL THEN
+        IF NOT EXISTS (SELECT 1 FROM programs WHERE id = p_program_id) THEN
+            SET v_error_message = CONCAT('El programa con ID ', p_program_id, ' no existe');
+            SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = v_error_message;
+        END IF;
+    END IF;
+    
+    -- Validar datos del familiar
+    IF p_pf_identification IS NULL OR p_pf_identification = '' THEN
+        SET v_error_message = 'La identificación del familiar es requerida';
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = v_error_message;
+    END IF;
+    
+    IF p_pf_name IS NULL OR p_pf_name = '' THEN
+        SET v_error_message = 'El nombre del familiar es requerido';
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = v_error_message;
+    END IF;
+    
+    IF p_pf_email IS NULL OR p_pf_email = '' THEN
+        SET v_error_message = 'El email del familiar es requerido';
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = v_error_message;
+    END IF;
+    
+    -- 1. INSERTAR FAMILIAR (primero para obtener su ID)
+    INSERT INTO older_adult_family (
+        pf_identification, pf_name, pf_f_last_name, pf_s_last_name,
+        pf_phone_number, pf_email, pf_kinship
+    ) VALUES (
+        p_pf_identification, p_pf_name, p_pf_f_last_name, p_pf_s_last_name,
+        p_pf_phone_number, p_pf_email, p_pf_kinship
+    );
+    
+    SET v_family_id = LAST_INSERT_ID();
+    
+    -- 2. INSERTAR ADULTO MAYOR
+    INSERT INTO older_adult (
+        oa_identification, oa_name, oa_f_last_name, oa_s_last_name, oa_birthdate,
+        oa_marital_status, oa_dwelling, oa_years_schooling, oa_previous_work,
+        oa_is_retired, oa_has_pension, oa_other, oa_other_description,
+        oa_area_of_origin, oa_children_count, oa_status, oa_death_date,
+        oa_economic_income, oa_phone_numner, oa_email, oa_profile_photo_url,
+        oa_gender, oa_blood_type, id_program, id_family
+    ) VALUES (
+        p_oa_identification, p_oa_name, p_oa_f_last_name, p_oa_s_last_name, p_oa_birthdate,
+        p_oa_marital_status, p_oa_dwelling, p_oa_years_schooling, p_oa_previous_work,
+        p_oa_is_retired, p_oa_has_pension, p_oa_other, p_oa_other_description,
+        p_oa_area_of_origin, p_oa_children_count, p_oa_status, p_oa_death_date,
+        p_oa_economic_income, p_oa_phone_numner, p_oa_email, p_oa_profile_photo_url,
+        p_oa_gender, p_oa_blood_type, p_program_id, v_family_id
+    );
+    
+    SET v_older_adult_id = LAST_INSERT_ID();
+    
+    -- 3. INSERTAR HISTORIAL CLÍNICO
+    INSERT INTO clinical_history (
+        ch_frequent_falls, ch_weight, ch_height, ch_imc, ch_blood_pressure,
+        ch_neoplasms, ch_neoplasms_description, ch_observations, ch_rcvg,
+        ch_vision_problems, ch_vision_hearing
+    ) VALUES (
+        p_ch_frequent_falls, p_ch_weight, p_ch_height, p_ch_imc, p_ch_blood_pressure,
+        p_ch_neoplasms, p_ch_neoplasms_description, p_ch_observations, p_ch_rcvg,
+        p_ch_vision_problems, p_ch_vision_hearing
+    );
+    
+    SET v_clinical_history_id = LAST_INSERT_ID();
+    
+    -- 4. INSERTAR CONDICIONES CLÍNICAS
+    IF p_clinical_conditions_ids IS NOT NULL AND p_clinical_conditions_ids != '' THEN
+        SET v_conditions_list = CONCAT(p_clinical_conditions_ids, ',');
+        SET v_pos = 1;
+        
+        WHILE v_pos > 0 DO
+            SET v_pos = LOCATE(',', v_conditions_list);
+            IF v_pos > 0 THEN
+                SET v_current_id = LEFT(v_conditions_list, v_pos - 1);
+                SET v_conditions_list = SUBSTRING(v_conditions_list, v_pos + 1);
+                
+                IF v_current_id != '' THEN
+                    -- Validar que la condición existe
+                    IF NOT EXISTS (SELECT 1 FROM clinical_conditions WHERE id = CAST(v_current_id AS UNSIGNED)) THEN
+                        SET v_error_message = CONCAT('La condición clínica con ID ', v_current_id, ' no existe');
+                        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = v_error_message;
+                    END IF;
+                    
+                    INSERT INTO clinical_history_and_conditions (id_c_condition, id_c_history)
+                    VALUES (CAST(v_current_id AS UNSIGNED), v_clinical_history_id);
+                END IF;
+            END IF;
+        END WHILE;
+    END IF;
+    
+    -- 5. INSERTAR VACUNAS
+    IF p_vaccines_ids IS NOT NULL AND p_vaccines_ids != '' THEN
+        SET v_vaccines_list = CONCAT(p_vaccines_ids, ',');
+        SET v_pos = 1;
+        
+        WHILE v_pos > 0 DO
+            SET v_pos = LOCATE(',', v_vaccines_list);
+            IF v_pos > 0 THEN
+                SET v_current_id = LEFT(v_vaccines_list, v_pos - 1);
+                SET v_vaccines_list = SUBSTRING(v_vaccines_list, v_pos + 1);
+                
+                IF v_current_id != '' THEN
+                    -- Validar que la vacuna existe
+                    IF NOT EXISTS (SELECT 1 FROM vaccines WHERE id = CAST(v_current_id AS UNSIGNED)) THEN
+                        SET v_error_message = CONCAT('La vacuna con ID ', v_current_id, ' no existe');
+                        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = v_error_message;
+                    END IF;
+                    
+                    INSERT INTO vaccines_and_clinical_history (id_vaccine, id_c_history)
+                    VALUES (CAST(v_current_id AS UNSIGNED), v_clinical_history_id);
+                END IF;
+            END IF;
+        END WHILE;
+    END IF;
+    
+    -- 6. INSERTAR MEDICAMENTOS
+    IF p_medications_json IS NOT NULL AND p_medications_json != '' AND p_medications_json != '[]' THEN
+        SET v_medications_count = JSON_LENGTH(p_medications_json);
+        
+        IF v_medications_count > 0 THEN
+            SET v_counter = 0;
+            WHILE v_counter < v_medications_count DO
+                SET @medication_name = JSON_UNQUOTE(JSON_EXTRACT(p_medications_json, CONCAT('$[', v_counter, '].medication')));
+                SET @medication_dosage = JSON_UNQUOTE(JSON_EXTRACT(p_medications_json, CONCAT('$[', v_counter, '].dosage')));
+                SET @medication_type = JSON_UNQUOTE(JSON_EXTRACT(p_medications_json, CONCAT('$[', v_counter, '].type')));
+                
+                INSERT INTO clinical_medication (m_medication, m_dosage, m_treatment_type, id_clinical_history)
+                VALUES (@medication_name, @medication_dosage, @medication_type, v_clinical_history_id);
+                
+                SET v_counter = v_counter + 1;
+            END WHILE;
+        END IF;
+    END IF;
+    
+    -- 7. INSERTAR SUBPROGRAMAS (si existen)
+    IF p_subprograms_ids IS NOT NULL AND p_subprograms_ids != '' THEN
+        SET v_subprograms_list = CONCAT(p_subprograms_ids, ',');
+        SET v_pos = 1;
+        
+        WHILE v_pos > 0 DO
+            SET v_pos = LOCATE(',', v_subprograms_list);
+            IF v_pos > 0 THEN
+                SET v_current_id = LEFT(v_subprograms_list, v_pos - 1);
+                SET v_subprograms_list = SUBSTRING(v_subprograms_list, v_pos + 1);
+                
+                IF v_current_id != '' THEN
+                    -- Validar que el subprograma existe y pertenece al programa
+                    IF NOT EXISTS (
+                        SELECT 1 FROM sub_programs 
+                        WHERE id = CAST(v_current_id AS UNSIGNED) AND id_program = p_program_id
+                    ) THEN
+                        SET v_error_message = CONCAT('El subprograma con ID ', v_current_id, ' no existe o no pertenece al programa ', p_program_id);
+                        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = v_error_message;
+                    END IF;
+                    
+                    INSERT INTO older_adult_subprogram (id_older_adult, id_sub_program)
+                    VALUES (v_older_adult_id, CAST(v_current_id AS UNSIGNED));
+                END IF;
+            END IF;
+        END WHILE;
+    END IF;
+    -- Confirmar transacción
+    COMMIT;
+    -- Retornar resultado exitoso
+    SELECT 
+        v_older_adult_id as older_adult_id,
+        v_family_id as family_id,
+        v_clinical_history_id as clinical_history_id,
+        'SUCCESS' as status,
+        'Expediente virtual creado exitosamente' as message;
 
+END$$
+DELIMITER ;
+-- =====================================================================================
+-- 2. PROCEDIMIENTO PARA ELIMINAR EXPEDIENTE VIRTUAL
+-- =====================================================================================
+DELIMITER $$
+CREATE PROCEDURE DeleteVirtualFile(
+    IN p_older_adult_identification VARCHAR(20)
+)
+BEGIN
+    DECLARE v_older_adult_id INT DEFAULT NULL;
+    DECLARE v_family_id INT DEFAULT NULL;
+    DECLARE v_clinical_history_id INT DEFAULT NULL;
+    DECLARE v_error_message VARCHAR(500);
+    
+    -- Handler para errores
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        GET DIAGNOSTICS CONDITION 1
+            v_error_message = MESSAGE_TEXT;
+        SELECT CONCAT('Error: ', v_error_message) as error_message;
+    END;
+    
+    -- Iniciar transacción
+    START TRANSACTION;
+    
+    -- Validar que el adulto mayor existe
+    SELECT id, id_family INTO v_older_adult_id, v_family_id
+    FROM older_adult 
+    WHERE oa_identification = p_older_adult_identification;
+    
+    IF v_older_adult_id IS NULL THEN
+        SET v_error_message = CONCAT('No existe un adulto mayor con identificación: ', p_older_adult_identification);
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = v_error_message;
+    END IF;
+    
+    -- Obtener el ID del historial clínico más reciente para este adulto mayor
+    -- Nota: Como no hay relación directa, asumimos el más reciente por fecha
+    SELECT MAX(id) INTO v_clinical_history_id FROM clinical_history 
+    WHERE create_at >= (SELECT create_at FROM older_adult WHERE id = v_older_adult_id);
+    
+    -- Eliminar relaciones de subprogramas
+    DELETE FROM older_adult_subprogram WHERE id_older_adult = v_older_adult_id;
+    
+    -- Eliminar contactos de emergencia
+    DELETE FROM emergency_contacts WHERE id_older_adult = v_older_adult_id;
+    
+    -- Si existe historial clínico, eliminar sus relaciones
+    IF v_clinical_history_id IS NOT NULL THEN
+        -- Eliminar medicamentos
+        DELETE FROM clinical_medication WHERE id_clinical_history = v_clinical_history_id;
+        
+        -- Eliminar relaciones con condiciones clínicas
+        DELETE FROM clinical_history_and_conditions WHERE id_c_history = v_clinical_history_id;
+        
+        -- Eliminar relaciones con vacunas
+        DELETE FROM vaccines_and_clinical_history WHERE id_c_history = v_clinical_history_id;
+        
+        -- Eliminar historial clínico
+        DELETE FROM clinical_history WHERE id = v_clinical_history_id;
+    END IF;
+    
+    -- Eliminar el adulto mayor (esto eliminará automáticamente las referencias por CASCADE)
+    DELETE FROM older_adult WHERE id = v_older_adult_id;
+    
+    -- Eliminar el familiar si existe
+    IF v_family_id IS NOT NULL THEN
+        DELETE FROM older_adult_family WHERE id = v_family_id;
+    END IF;
+    
+    -- Confirmar transacción
+    COMMIT;
+    
+    -- Retornar resultado exitoso
+    SELECT 
+        v_older_adult_id as deleted_older_adult_id,
+        p_older_adult_identification as identification,
+        'SUCCESS' as status,
+        'Expediente virtual eliminado exitosamente' as message;
 
+END$$
+DELIMITER ;
+-- =====================================================================================
+-- 3. PROCEDIMIENTO PARA OBTENER EXPEDIENTE VIRTUAL COMPLETO
+-- =====================================================================================
+DELIMITER $$
+CREATE PROCEDURE GetVirtualFile(
+    IN p_older_adult_identification VARCHAR(20)
+)
+BEGIN
+    DECLARE v_older_adult_id INT DEFAULT NULL;
+    DECLARE v_error_message VARCHAR(500);
+    -- Validar que el adulto mayor existe
+    SELECT id INTO v_older_adult_id
+    FROM older_adult 
+    WHERE oa_identification = p_older_adult_identification;
+    
+    IF v_older_adult_id IS NULL THEN
+        SELECT CONCAT('No existe un adulto mayor con identificación: ', p_older_adult_identification) as error_message;
+    ELSE
+        -- Retornar información completa del expediente virtual
+        SELECT 
+            oa.*,
+            p.p_name as program_name,
+            fam.*,
+            GROUP_CONCAT(DISTINCT sp.sp_name) as subprograms
+        FROM older_adult oa
+        LEFT JOIN programs p ON oa.id_program = p.id
+        LEFT JOIN older_adult_family fam ON oa.id_family = fam.id
+        LEFT JOIN older_adult_subprogram oas ON oa.id = oas.id_older_adult
+        LEFT JOIN sub_programs sp ON oas.id_sub_program = sp.id
+        WHERE oa.id = v_older_adult_id
+        GROUP BY oa.id;
+    END IF;
 
-
-
-
-
-
-
-
+END$$
+DELIMITER ;
