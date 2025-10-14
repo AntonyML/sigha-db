@@ -12,16 +12,6 @@ CREATE TABLE roles (
 
 CREATE INDEX idx_role_name ON roles(r_name);
 
--- Tabla de permisos
-CREATE TABLE permissions (
-	id INT AUTO_INCREMENT PRIMARY KEY,
-    p_name VARCHAR(50) NOT NULL,
-    id_role INT,
-    FOREIGN KEY (id_role) REFERENCES roles(id)
-);
-
-CREATE INDEX idx_permission ON permissions(p_name);
-
 -- Tabla de usuarios
 CREATE TABLE users (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -33,7 +23,6 @@ CREATE TABLE users (
     u_email_verified BOOLEAN DEFAULT FALSE,
     u_password VARCHAR(255) NOT NULL,
     u_is_active BOOLEAN DEFAULT TRUE,
-    u_token VARCHAR(255) NULL,
     create_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     role_id INT,
     FOREIGN KEY (role_id) REFERENCES roles(id)
@@ -41,6 +30,85 @@ CREATE TABLE users (
 
 CREATE INDEX idx_user_email ON users(u_email);
 CREATE INDEX idx_user_identification ON users(u_identification);
+
+-- ####################################################################################
+
+-- Tabla para almacenar información de 2FA de los usuarios
+CREATE TABLE user_two_factor (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    tfa_secret VARCHAR(255) NOT NULL,              -- Secret para TOTP
+    tfa_enabled BOOLEAN DEFAULT FALSE,              -- Si 2FA está activado
+    tfa_backup_codes TEXT NULL,                     -- Códigos de respaldo (JSON array)
+    tfa_last_used DATETIME NULL,                    -- Última vez que se usó 2FA
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Tabla para almacenar sesiones JWT activas
+CREATE TABLE user_sessions (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    session_token VARCHAR(500) NOT NULL,    -- JWT token hash
+    refresh_token VARCHAR(500) NULL,                -- Refresh token hash
+    ip_address VARCHAR(45) NULL,                    -- IPv4 o IPv6
+    user_agent TEXT NULL,                           -- Información del navegador/app
+    is_active BOOLEAN DEFAULT TRUE,
+    expires_at DATETIME NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    last_activity DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_user_sessions ON user_sessions(user_id, is_active);
+CREATE INDEX idx_session_token ON user_sessions(session_token);
+CREATE INDEX idx_expires_at ON user_sessions(expires_at);
+
+-- Tabla para registrar intentos de login (seguridad)
+CREATE TABLE login_attempts (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NULL,                               -- NULL si el usuario no existe
+    email VARCHAR(256) NOT NULL,
+    ip_address VARCHAR(45) NULL,
+    attempt_successful BOOLEAN DEFAULT FALSE,
+    failure_reason VARCHAR(100) NULL,               -- 'invalid_password', 'invalid_2fa', 'user_not_found', etc.
+    attempted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE INDEX idx_login_attempts ON login_attempts(email, attempted_at);
+CREATE INDEX idx_ip_attempts ON login_attempts(ip_address, attempted_at);
+
+-- Tabla para tokens de recuperación de contraseña
+CREATE TABLE password_reset_tokens (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    token VARCHAR(255) NOT NULL,
+    expires_at DATETIME NOT NULL,
+    used BOOLEAN DEFAULT FALSE,
+    used_at DATETIME NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_token ON password_reset_tokens(token);
+CREATE INDEX idx_expires ON password_reset_tokens(expires_at, used);
+
+-- Tabla para tokens de verificación de email
+CREATE TABLE email_verification_tokens (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    token VARCHAR(255) NOT NULL UNIQUE,
+    expires_at DATETIME NOT NULL,
+    verified BOOLEAN DEFAULT FALSE,
+    verified_at DATETIME NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_token ON email_verification_tokens(token);
+CREATE INDEX idx_expires ON email_verification_tokens(expires_at, verified);
 
 -- ####################################################################################
 
@@ -75,7 +143,7 @@ CREATE TABLE sub_programs (
     id INT AUTO_INCREMENT PRIMARY KEY,
     sp_name VARCHAR(50) NOT NULL,
     id_program INT,
-    FOREIGN KEY (id_program) REFERENCES programs(id)
+    FOREIGN KEY (id_program) REFERENCES programs(id) ON DELETE CASCADE
 );
 
 CREATE INDEX idx_subprogram_name ON sub_programs(sp_name);
@@ -140,8 +208,8 @@ CREATE TABLE older_adult (
 	-- llaves foráneas
     id_program INT,
     id_family INT,
-    FOREIGN KEY (id_program) REFERENCES programs(id),
-    FOREIGN KEY (id_family) REFERENCES older_adult_family(id)
+    FOREIGN KEY (id_program) REFERENCES programs(id) ON DELETE SET NULL,
+    FOREIGN KEY (id_family) REFERENCES older_adult_family(id) ON DELETE SET NULL
 );
 
 CREATE INDEX idx_olderadult_identification ON older_adult(oa_identification);
@@ -156,7 +224,7 @@ CREATE TABLE emergency_contacts (
     en_phone_number VARCHAR(20) NOT NULL,
 	create_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     id_older_adult INT,
-    FOREIGN KEY (id_older_adult) REFERENCES older_adult(id)
+    FOREIGN KEY (id_older_adult) REFERENCES older_adult(id) ON DELETE CASCADE
 );
 
 CREATE INDEX idx_emergency_number ON emergency_contacts(en_phone_number);
@@ -220,16 +288,16 @@ CREATE INDEX idx_clinicalhistory_createat ON clinical_history(create_at);
 CREATE TABLE clinical_history_and_conditions (
 	id_c_condition INT,
     id_c_history INT,
-    FOREIGN KEY (id_c_condition) REFERENCES clinical_conditions(id),
-    FOREIGN KEY (id_c_history) REFERENCES clinical_history(id)
+    FOREIGN KEY (id_c_condition) REFERENCES clinical_conditions(id) ON DELETE CASCADE,
+    FOREIGN KEY (id_c_history) REFERENCES clinical_history(id) ON DELETE CASCADE
 );
 
 -- Tabla relación de vaccines y clinical_history
 CREATE TABLE vaccines_and_clinical_history (
 	id_vaccine INT,
     id_c_history INT,
-    FOREIGN key (id_vaccine) REFERENCES vaccines(id),
-	FOREIGN key (id_c_history) REFERENCES clinical_history(id)
+    FOREIGN key (id_vaccine) REFERENCES vaccines(id) ON DELETE CASCADE,
+	FOREIGN key (id_c_history) REFERENCES clinical_history(id) ON DELETE CASCADE
 );
 
 -- Tabla de medicación
@@ -239,7 +307,7 @@ CREATE TABLE clinical_medication (
     m_dosage VARCHAR(30) NOT NULL,
     m_treatment_type ENUM('temporary', 'chronic', 'preventive', 'other') NOT NULL DEFAULT 'other',
     id_clinical_history INT,
-    FOREIGN KEY (id_clinical_history) REFERENCES clinical_history(id)
+    FOREIGN KEY (id_clinical_history) REFERENCES clinical_history(id) ON DELETE CASCADE
 );
 
 CREATE INDEX idx_clinicalmedication_medication ON clinical_medication(m_medication);
@@ -278,7 +346,7 @@ CREATE TABLE specialized_area (
     sa_is_active BOOLEAN DEFAULT TRUE,                    -- Por si el área deja de operar
     create_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     id_manager INT,
-    FOREIGN KEY (id_manager) REFERENCES users(id)
+    FOREIGN KEY (id_manager) REFERENCES users(id) ON DELETE SET NULL
 );
 
 CREATE INDEX idx_area_name ON specialized_area(sa_name);
@@ -299,9 +367,9 @@ CREATE TABLE specialized_appointment (
     id_area INT NOT NULL,
     id_patient INT NOT NULL,
     id_staff INT NOT NULL,
-    FOREIGN KEY (id_area) REFERENCES specialized_area(id),
-    FOREIGN KEY (id_patient) REFERENCES older_adult(id),
-    FOREIGN KEY (id_staff) REFERENCES users(id)
+    FOREIGN KEY (id_area) REFERENCES specialized_area(id) ON DELETE CASCADE,
+    FOREIGN KEY (id_patient) REFERENCES older_adult(id) ON DELETE CASCADE,
+    FOREIGN KEY (id_staff) REFERENCES users(id) ON DELETE CASCADE
 );
 
 CREATE INDEX idx_appointment_date ON specialized_appointment(sa_appointment_date);
@@ -323,8 +391,8 @@ CREATE TABLE nursing_records (
     nr_sleep_quality ENUM('good', 'regular', 'poor') DEFAULT 'regular',
     nr_notes TEXT NULL,
     create_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    id_appointment INT NOT NULL,
-    FOREIGN KEY (id_appointment) REFERENCES specialized_appointment(id)
+    id_appointment INT,
+    FOREIGN KEY (id_appointment) REFERENCES specialized_appointment(id) ON DELETE CASCADE
 );
 
 CREATE INDEX idx_nursing_createat ON nursing_records(create_at);
@@ -341,7 +409,7 @@ CREATE TABLE physiotherapy_sessions (
     ps_progress_notes TEXT,    
     create_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     id_appointment INT NOT NULL,
-    FOREIGN KEY (id_appointment) REFERENCES specialized_appointment(id)
+    FOREIGN KEY (id_appointment) REFERENCES specialized_appointment(id) ON DELETE CASCADE
 );
 
 CREATE INDEX idx_physiotherapy_createat ON physiotherapy_sessions(create_at);
@@ -359,13 +427,13 @@ CREATE TABLE psychology_sessions (
     psy_progress TEXT,
     create_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     id_appointment INT,
-    FOREIGN KEY (id_appointment) REFERENCES specialized_appointment(id)
+    FOREIGN KEY (id_appointment) REFERENCES specialized_appointment(id) ON DELETE CASCADE
 );
 
 CREATE INDEX idx_psychology_createat ON psychology_sessions(create_at);
 CREATE INDEX idx_psychology_type ON psychology_sessions(psy_session_type);
 
--- Tabla para guardar datos de trabajo socia
+-- Tabla para guardar datos de trabajo social
 CREATE TABLE social_work_reports (
     id INT AUTO_INCREMENT PRIMARY KEY,
     sw_date DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -377,7 +445,7 @@ CREATE TABLE social_work_reports (
     sw_recommendations TEXT,
     create_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     id_appointment INT,
-    FOREIGN KEY (id_appointment) REFERENCES specialized_appointment(id)
+    FOREIGN KEY (id_appointment) REFERENCES specialized_appointment(id) ON DELETE CASCADE
 );
 
 CREATE INDEX idx_socialwork_createat ON social_work_reports(create_at);
@@ -399,9 +467,9 @@ CREATE TABLE medical_record (
     id_older_adult INT NOT NULL,
     id_appointment INT NULL,
     id_staff INT NULL,
-    FOREIGN KEY (id_older_adult) REFERENCES older_adult(id),
+    FOREIGN KEY (id_older_adult) REFERENCES older_adult(id) ON DELETE CASCADE,
     FOREIGN KEY (id_appointment) REFERENCES specialized_appointment(id),
-    FOREIGN KEY (id_staff) REFERENCES users(id)
+    FOREIGN KEY (id_staff) REFERENCES users(id) ON DELETE SET NULL
 );
 
 CREATE INDEX idx_medicalrecord_createat ON medical_record(create_at);
@@ -418,13 +486,14 @@ CREATE TABLE digital_record (
     dr_record_id INT NULL,                  -- ID del registro afectado
     dr_description TEXT NULL,               -- Ej. "Eliminó paciente con ID 32"
     dr_timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (dr_user_id) REFERENCES users(id)
+    FOREIGN KEY (dr_user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 CREATE INDEX idx_digital_name ON digital_record(dr_table_name);
 CREATE INDEX idx_digital_action ON digital_record(dr_action);
 
 -- Tabla de auditoría (conteo de auditorías generadas)
+-- OPCIONAL, SE PUEDE QUITAR O AJUSTAR A LAS AUDITORIAS TONY
 CREATE TABLE audit_reports (
     id INT AUTO_INCREMENT PRIMARY KEY,
     ar_audit_number INT UNIQUE,
@@ -468,10 +537,14 @@ CREATE TABLE notification_attachment (
     FOREIGN KEY (id_notification) REFERENCES notifications(id)
 );
 
+-- IMPORTANTE: ACÁ SE PUEDEN ELIMINAR LOS REGISTROS CON "ON DELETE CASCADE", PERO PRIMERO HAY QUE TOMAR LA RUTA DONDE 
+-- ESTÁN LOS ARCHIVOS Y ELIMINARLOS PARA QUE NO QUITEN ESPACIO, LUEGO SE PUEDEN BORRAR LOS REGISTROS DE ACÁ
+
 CREATE INDEX idx_attachment_name ON notification_attachment(na_file_name);
 CREATE INDEX idx_attachment_path ON notification_attachment(na_file_path);
 
 -- ######################################################################################################################################################
+-- PROCEDIMIENTOS ALMACENADOS
 
 DELIMITER //
 CREATE PROCEDURE generate_audit_report (
@@ -546,6 +619,57 @@ BEGIN
             AND dr.dr_timestamp BETWEEN start_date AND end_date
             ORDER BY dr.dr_timestamp DESC;
     END CASE;
+END //
+DELIMITER ;
+
+-- Procedimiento para limpiar sesiones expiradas (ejecutar periódicamente)
+DELIMITER //
+CREATE PROCEDURE clean_expired_sessions()
+BEGIN
+    UPDATE user_sessions 
+    SET is_active = FALSE 
+    WHERE expires_at < NOW() AND is_active = TRUE;
+    
+    -- Opcional: eliminar sesiones muy antiguas (más de 30 días inactivas)
+    DELETE FROM user_sessions 
+    WHERE is_active = FALSE 
+    AND last_activity < DATE_SUB(NOW(), INTERVAL 30 DAY);
+END //
+DELIMITER ;
+
+-- Procedimiento para limpiar tokens expirados
+DELIMITER //
+CREATE PROCEDURE clean_expired_tokens()
+BEGIN
+    -- Limpiar tokens de reset de contraseña expirados
+    DELETE FROM password_reset_tokens 
+    WHERE expires_at < NOW() AND used = FALSE;
+    
+    -- Limpiar tokens de verificación de email expirados
+    DELETE FROM email_verification_tokens 
+    WHERE expires_at < NOW() AND verified = FALSE;
+END //
+DELIMITER ;
+
+-- Procedimiento para obtener estadísticas de intentos de login fallidos
+DELIMITER //
+CREATE PROCEDURE get_failed_login_stats(
+    IN time_window_hours INT
+)
+BEGIN
+    SELECT 
+        email,
+        ip_address,
+        COUNT(*) as failed_attempts,
+        MAX(attempted_at) as last_attempt,
+        failure_reason
+    FROM login_attempts
+    WHERE 
+        attempt_successful = FALSE 
+        AND attempted_at > DATE_SUB(NOW(), INTERVAL time_window_hours HOUR)
+    GROUP BY email, ip_address, failure_reason
+    HAVING failed_attempts >= 3
+    ORDER BY failed_attempts DESC, last_attempt DESC;
 END //
 DELIMITER ;
 
