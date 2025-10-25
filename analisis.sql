@@ -514,21 +514,50 @@ CREATE TABLE digital_record (
 CREATE INDEX idx_digital_name ON digital_record(dr_table_name);
 CREATE INDEX idx_digital_action ON digital_record(dr_action);
 
--- Tabla de auditoría (conteo de auditorías generadas)
--- OPCIONAL, SE PUEDE QUITAR O AJUSTAR A LAS AUDITORIAS TONY
+-- Tabla de auditoría (conteo de auditorías generadas) (cambio de tony)
 CREATE TABLE audit_reports (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    ar_audit_number INT UNIQUE,
-    ar_type ENUM('general_actions', 'role_changes', 'older_adult_updates', 'system_access', 'other') DEFAULT 'other',
-    ar_start_date DATETIME NOT NULL,
-    ar_end_date DATETIME NOT NULL,
-	create_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    id_generator INT,
+    ar_audit_number INT UNIQUE COMMENT 'Número secuencial único de auditoría',
+    ar_type ENUM(
+        'general_actions',
+        'role_changes',
+        'older_adult_updates',
+        'system_access',
+        'login_attempts',
+        'password_resets',
+        'clinical_record_changes',
+        'notifications',
+        'other'
+    ) DEFAULT 'other' COMMENT 'Tipo de auditoría realizada',
+    
+    ar_entity_name VARCHAR(100) NULL COMMENT 'Nombre de la tabla o entidad afectada',
+    ar_entity_id INT NULL COMMENT 'ID del registro afectado (si aplica)',
+    ar_action ENUM('create', 'update', 'delete', 'view', 'login', 'logout', 'export', 'other') DEFAULT 'other' COMMENT 'Acción realizada',
+    
+    ar_old_value TEXT NULL COMMENT 'Valor anterior (si es actualización)',
+    ar_new_value TEXT NULL COMMENT 'Valor nuevo (si es actualización)',
+    ar_observations TEXT NULL COMMENT 'Observaciones adicionales o motivo de la acción',
+
+    ar_start_date DATETIME NOT NULL COMMENT 'Inicio de auditoría o acción',
+    ar_end_date DATETIME NULL COMMENT 'Fin de auditoría (si aplica)',
+    ar_duration_seconds INT NULL COMMENT 'Duración de la acción en segundos (si aplica)',
+    
+    ar_ip_address VARCHAR(45) NULL COMMENT 'IP desde donde se realizó la acción',
+    ar_user_agent TEXT NULL COMMENT 'Información del navegador o aplicación utilizada',
+
+    create_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT 'Fecha de creación del registro de auditoría',
+    
+    id_generator INT NULL COMMENT 'Usuario que generó la acción',
     FOREIGN KEY (id_generator) REFERENCES users(id)
 );
 
+-- Índices para optimizar consultas frecuentes
 CREATE INDEX idx_audit_type ON audit_reports(ar_type);
-CREATE INDEX idx_audit_create ON audit_reports(create_at);
+CREATE INDEX idx_audit_entity ON audit_reports(ar_entity_name, ar_entity_id);
+CREATE INDEX idx_audit_user ON audit_reports(id_generator);
+CREATE INDEX idx_audit_action ON audit_reports(ar_action);
+CREATE INDEX idx_audit_create_at ON audit_reports(create_at);
+
 
 -- ####################################################################################
 
