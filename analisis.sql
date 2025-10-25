@@ -295,7 +295,9 @@ CREATE TABLE clinical_history (
     ch_rcvg ENUM('< 10%', 'e /10y20%', 'e /20y30%', 'e /40y40%', '> 40%', 'UNKNOWN') DEFAULT 'UNKNOWN',		-- Riesgo cardiovascular global
     ch_vision_problems BOOLEAN NOT NULL DEFAULT FALSE,		-- TRUE = tiene problemas de visión, FALSE = no tiene problemas
     ch_vision_hearing BOOLEAN NOT NULL DEFAULT FALSE,		-- TRUE = tiene problemas de audición, FALSE = no tiene problemas
-	create_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	create_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    id_older_adult INT NULL,
+    FOREIGN KEY (id_older_adult) REFERENCES older_adult(id)
 );
 
 CREATE INDEX idx_clinicalhistory_createat ON clinical_history(create_at);
@@ -320,7 +322,7 @@ CREATE TABLE vaccines_and_clinical_history (
 CREATE TABLE clinical_medication (
 	id INT AUTO_INCREMENT PRIMARY KEY,
     m_medication VARCHAR(500) NOT NULL,
-    m_dosage VARCHAR(30) NOT NULL,
+    m_dosage VARCHAR(200) NOT NULL,
     m_treatment_type ENUM('temporary', 'chronic', 'preventive', 'other') NOT NULL DEFAULT 'other',
     id_clinical_history INT,
     FOREIGN KEY (id_clinical_history) REFERENCES clinical_history(id) ON DELETE CASCADE
@@ -1005,3 +1007,26 @@ BEGIN
 
 END$$
 DELIMITER ;
+
+
+
+
+
+SELECT * FROM users;
+SELECT * FROM user_two_factor;
+SELECT * FROM entrances_exits;
+SELECT * FROM older_adult;
+SELECT * FROM older_adult_family;
+SELECT * FROM older_adult_subprogram;
+SELECT * FROM clinical_conditions;
+SELECT * FROM vaccines;
+SELECT * FROM clinical_history;
+SELECT * FROM clinical_history_and_conditions;
+SELECT * FROM vaccines_and_clinical_history;
+SELECT * FROM clinical_medication;
+SELECT * FROM programs;
+SELECT * FROM sub_programs;
+
+
+
+
