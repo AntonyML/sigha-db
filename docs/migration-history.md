@@ -24,7 +24,7 @@ mysql -u root -p < sp-auditoria.sql
 mysql -u root -p < clean_all_data.sql
 ```
 
-> Or via Docker Compose: `cd backend_nest_js_hogar_de_ancianos/docker && docker compose up -d` (boots MySQL with the schema preloaded).
+> Or via Docker Compose: `cd sigha-api/docker && docker compose up -d` (boots MySQL with the schema preloaded).
 
 ---
 
