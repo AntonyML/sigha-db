@@ -16,6 +16,8 @@
    5. `migrations/005_virtual_records.sql`
    6. `migrations/006_nursing_and_appointments.sql`
    7. `migrations/007_functions.sql`
+   8. `migrations/008_permissions.sql`
+   9. `migrations/009_virtual_file_procedures.sql`
 3. Optionally run `seeds/000_seed_roles.sql` to insert the default roles.
 
 ### Option B — Supabase CLI
@@ -46,7 +48,9 @@ psql "$DATABASE_URL" -f supabase/migrations/002_core_auth.sql
 
 ## TODO (follow-up)
 
-- **CreateVirtualFile** procedure (legacy MySQL, ~300 lines) is not ported.
-  Recommended: move the business logic into the backend's
-  `VirtualRecordsService` and keep the database thin. See the comment at the
-  end of `007_functions.sql`.
+- `create_virtual_file`, `delete_virtual_file` and `get_virtual_file` are now
+  ported in `009_virtual_file_procedures.sql`. They mirror the legacy MySQL
+  procedures but use idiomatic Postgres (arrays / JSONB / table-returning
+  functions). The recommended long-term path remains to move this business
+  logic into the backend's `VirtualRecordsService` and keep the database
+  thin.

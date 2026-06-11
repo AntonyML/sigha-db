@@ -1,6 +1,6 @@
 /**
  * apply_migrations.js
- * Aplica las migraciones Supabase (001-007) + seed de roles.
+ * Aplica las migraciones Supabase (001-009) + seed de roles.
  * Usar desde E:\Dev\TCU con: node sigha-db/apply_migrations.js
  *
  * Requiere: node_modules/pg instalado en sigha-api.
@@ -44,6 +44,8 @@ const migrations = [
     'supabase/migrations/005_virtual_records.sql',
     'supabase/migrations/006_nursing_and_appointments.sql',
     'supabase/migrations/007_functions.sql',
+    'supabase/migrations/008_permissions.sql',
+    'supabase/migrations/009_virtual_file_procedures.sql',
     'supabase/seeds/000_seed_roles.sql',
 ];
 
