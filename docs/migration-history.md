@@ -40,7 +40,9 @@ mysql -u root -p < clean_all_data.sql
 | `004_programs.sql` | `programs`, `sub_programs` (+ seeds) | ✅ |
 | `005_virtual_records.sql` | `older_adult_family`, `older_adult`, `older_adult_subprogram`, `emergency_contacts`, `older_adult_updates`, `clinical_conditions`, `vaccines`, `clinical_history`, `clinical_history_and_conditions`, `vaccines_and_clinical_history`, `clinical_medication` | ✅ |
 | `006_nursing_and_appointments.sql` | `specialized_area`, `specialized_appointment`, `nursing_records`, `physiotherapy_sessions`, `psychology_sessions`, `social_work_reports`, `medical_record` | ✅ |
-| `007_functions.sql` | `clean_expired_sessions()`, `clean_expired_tokens()`, `get_failed_login_stats()`, `log_audit()`, `set_updated_at()` trigger; `CreateVirtualFile` procedure marked as TODO (recommended: move logic to backend service) | ✅ |
+| `007_functions.sql` | `clean_expired_sessions()`, `clean_expired_tokens()`, `get_failed_login_stats()`, `log_audit()`, `set_updated_at()` trigger | ✅ |
+| `008_permissions.sql` | `permissions`, `role_permissions` (RBAC catalogue + per-role seeds) | ✅ |
+| `009_virtual_file_procedures.sql` | `create_virtual_file()`, `delete_virtual_file()`, `get_virtual_file()`, `compute_audit_session_duration()` — ports of the legacy MySQL `CreateVirtualFile` / `DeleteVirtualFile` / `GetVirtualFile` / `sp_log_audit` (logout branch) procedures | ✅ |
 | `seeds/000_seed_roles.sql` | Seeds the 8 default roles | ✅ |
 
 Apply with the Supabase CLI:
