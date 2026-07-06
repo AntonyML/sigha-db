@@ -1,7 +1,6 @@
 # Supabase / Postgres migrations
 
-> **Use this folder instead of the legacy `scriptDBCompleta.sql`.**
-> See [`../docs/migration-history.md`](../docs/migration-history.md) for the full transition plan.
+
 
 ## How to apply
 
@@ -17,7 +16,7 @@
    6. `migrations/006_nursing_and_appointments.sql`
    7. `migrations/007_functions.sql`
    8. `migrations/008_permissions.sql`
-   9. `migrations/009_virtual_file_procedures.sql`
+   9. `migrations/011_virtual_file_procedures.sql`
 3. Optionally run `seeds/000_seed_roles.sql` to insert the default roles.
 
 ### Option B — Supabase CLI
@@ -49,7 +48,7 @@ psql "$DATABASE_URL" -f supabase/migrations/002_core_auth.sql
 ## TODO (follow-up)
 
 - `create_virtual_file`, `delete_virtual_file` and `get_virtual_file` are now
-  ported in `009_virtual_file_procedures.sql`. They mirror the legacy MySQL
+  ported in `011_virtual_file_procedures.sql`.
   procedures but use idiomatic Postgres (arrays / JSONB / table-returning
   functions). The recommended long-term path remains to move this business
   logic into the backend's `VirtualRecordsService` and keep the database

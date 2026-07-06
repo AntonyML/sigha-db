@@ -1,6 +1,6 @@
 # AGENTS.md — Database (`sigha-db/`)
 
-> **You are an AI agent working on the MySQL database (and soon Supabase/Postgres) of the Hogar de Ancianos platform.**
+> **You are an AI agent working on the Supabase/Postgres database of the Hogar de Ancianos platform.**
 > Read the root `AGENTS.md` first, then this file.
 
 ---
@@ -17,10 +17,10 @@
 
 ## 1. Stack
 
-- **Engine:** MySQL 8 (today)
-- **Target engine:** PostgreSQL 15+ via Supabase (ÉPICA 2)
-- **Migrations:** Today — single `scriptDBCompleta.sql` + auxiliary `update_*.sql`. Future — numbered `migrations/001_*.sql` etc.
-- **Audit:** `sp_log_audit` procedure (MySQL) — to be replaced by a Postgres function or moved to the backend's `AuditService`.
+- **Engine:** PostgreSQL 15+ via Supabase
+- **Migrations:** Numbered `supabase/migrations/001_*.sql` through `012_*.sql`
+- **Seeds:** `supabase/seeds/000_seed_roles.sql`
+- **Audit:** Handled via backend's `AuditService` (TypeORM entity-based)
 
 ---
 
@@ -29,123 +29,137 @@
 ```
 sigha-db/
 ├── AGENTS.md                                # this file
-├── docs/                                    # AI-facing reference docs
-│   ├── tables-catalog.md                    # every table
-│   ├── er-diagram.md                        # relationships (textual)
-│   └── migration-history.md                 # execution order + history
-├── scriptDBCompleta.sql                     # main schema (~30 tables)
-├── sp-auditoria.sql                         # audit procedure (legacy)
-├── clean_all_data.sql                       # truncate for dev
-├── data-usuario-auditoria-test.sql          # test fixtures (auditor user)
-├── update_audit_reports.sql                 # incremental update
-└── pogrestsql/                              # ⚠️ NOT a real migration; Postgres dump of Notifuse, do not use
+├── supabase/
+│   ├── README.md                            # how to apply migrations
+│   ├── migrations/
+│   │   ├── 001_extensions_and_types.sql
+│   │   ├── 002_core_auth.sql
+│   │   ├── 003_access_and_audit.sql
+│   │   ├── 004_programs.sql
+│   │   ├── 005_virtual_records.sql
+│   │   ├── 006_nursing_and_appointments.sql
+│   │   ├── 007_functions.sql
+│   │   ├── 008_permissions.sql
+│   │   ├── 009_role_changes_normalization.sql
+│   │   ├── 011_virtual_file_procedures.sql
+│   │   └── 012_user_roles_foundation.sql
+│   └── seeds/
+│       └── 000_seed_roles.sql
+└── AGENTS.md
 ```
+
+**Note on numbering:** Migrations `011` and `012` were originally `009_virtual_file_procedures.sql` and `010_user_roles_foundation.sql` but were renumbered to resolve a conflict where two files shared the `009` prefix.
 
 ---
 
 ## 3. Tables (~30)
 
-The full list is in `docs/tables-catalog.md`. Highlights:
+Core tables by domain:
 
-- **Auth:** `users`, `roles`, `user_two_factor`, `user_sessions`, `login_attempts`, `password_reset_tokens`, `email_verification_tokens`
+- **Auth:** `roles`, `users`, `user_two_factor`, `user_sessions`, `login_attempts`, `password_reset_tokens`, `email_verification_tokens`
 - **Access:** `entrances_exits`
 - **Roles audit:** `role_changes`
 - **Older adults:** `older_adult`, `older_adult_family`, `older_adult_updates`, `older_adult_subprogram`
-- **Clinical:** `clinical_history`, `clinical_conditions`, `clinical_medications`, `clinical_history_and_condition`, `vaccines`, `vaccines_and_clinical_history`
+- **Clinical:** `clinical_history`, `clinical_conditions`, `clinical_medications`, `clinical_history_and_conditions`, `vaccines`, `vaccines_and_clinical_history`
 - **Programs:** `programs`, `sub_programs`
-- **Nursing:** `nursing_records`, `specialized_appointments`, `specialized_areas`
+- **Nursing:** `nursing_records`, `specialized_appointment`, `specialized_area`, `physiotherapy_sessions`, `psychology_sessions`, `social_work_reports`, `medical_record`
 - **Audit / logs:** `audit_reports`, `digital_records`, `notifications`, `notification_attachments`
 - **Emergency contacts:** `emergency_contacts`
 
-> The `medical_record` table is referenced by the backend (planned) but the actual CREATE TABLE is missing or pending — verify in `scriptDBCompleta.sql`.
+For schema inspection, use **Supabase Dashboard → Schema Editor** or query `information_schema` tables.
 
 ---
 
 ## 4. Naming conventions
 
-- **Tables:** snake_case, plural or plural-ish (`users`, `roles`, `nursing_records`, but `older_adult` is singular).
-- **Columns:** snake_case. Legacy prefixes: `u_` (user), `r_` (role), `tfa_` (2FA), `rpt_` (report), `not_` (notification).
-- **PKs:** `id` INT AUTO_INCREMENT.
-- **FKs:** `<table>_id` (`user_id`, `role_id`).
-- **Timestamps:** `create_at`, `update_at` (legacy spelling — keep).
-- **Soft delete:** prefer `u_is_active` boolean over a `deletedAt` column.
+- **Tables:** snake_case, mostly plural (`users`, `roles`, `nursing_records`), some singular legacy (`older_adult`)
+- **Columns:** snake_case. Legacy prefixes: `u_` (user), `r_` (role), `tfa_` (2FA), `rpt_` (report), `not_` (notification)
+- **PKs:** `id` INTEGER GENERATED BY DEFAULT AS IDENTITY
+- **FKs:** `<table>_id` (`user_id`, `role_id`)
+- **Timestamps:** `created_at`, `updated_at` (TIMESTAMPTZ)
+- **Soft delete:** `is_active` boolean
 
 ---
 
 ## 5. Adding a new table — checklist
 
-1. Add the `CREATE TABLE` block to `scriptDBCompleta.sql` (and, after ÉPICA 2, a new file under `supabase/migrations/`).
-2. Add appropriate `CREATE INDEX` statements for FKs and frequent lookups.
-3. Add the corresponding TypeORM entity in the backend (`src/ucr/ac/cr/ie/domain/<area>/<thing>.entity.ts`).
-4. **Add the entity to `database.providers.ts`** (see `backend/docs/entities.md`).
-5. Add a row to `docs/tables-catalog.md`.
-6. Update `docs/er-diagram.md` if there are new relationships.
-7. Commit: `feat(db): add <table> table`.
+1. Create a new migration file: `supabase/migrations/013_<table_name>.sql` (use next available number)
+2. Write idempotent SQL: `CREATE TABLE IF NOT EXISTS`, add indexes
+3. Add the corresponding TypeORM entity in the backend (`src/ucr/ac/cr/ie/domain/<area>/<thing>.entity.ts`)
+4. **Add the entity to `database.providers.ts`** (see `backend/docs/entities.md`)
+5. Update this file (Section 3) if the table is core to the domain
+6. Commit: `feat(db): add <table> table`
 
 ---
 
 ## 6. Modifying a table — checklist
 
-1. **Do not drop columns** without an `ALTER TABLE ... DROP COLUMN` in a separate migration.
-2. **Do not rename columns** without updating both the SQL and the backend entity in the same commit.
-3. **Do not change ENUM values** without a migration that adds the new value first, then optionally removes the old one (MySQL allows adding ENUM values in place; removing requires a column recreate).
-4. Add an `update_*.sql` file if the change applies to existing deployments.
-5. Add a row to `docs/migration-history.md` describing the change.
-6. Commit: `feat(db): add <column> to <table>` or `fix(db): ...`.
+1. **Do not drop columns** without an `ALTER TABLE ... DROP COLUMN` in a new migration
+2. **Do not rename columns** without updating both the migration and the backend entity in the same commit
+3. **Do not change types** without a proper migration path (add new column, migrate data, drop old)
+4. Create a new numbered migration file (do NOT edit existing migrations)
+5. Commit: `feat(db): add <column> to <table>` or `fix(db): ...`
 
 ---
 
-## 7. Migration order (target, Supabase)
+## 7. Migration order
 
-After ÉPICA 2, the SQL will be split into ordered files under `supabase/migrations/`:
+Migrations are executed in alphabetical order by filename. Current order:
 
-```
-supabase/migrations/
-  001_extensions_and_types.sql
-  002_core_auth.sql
-  003_virtual_records.sql
-  004_nursing_and_appointments.sql
-  005_access_and_audit.sql
-  006_functions.sql
-  007_seed_roles.sql
-```
+| #  | File | Purpose |
+|----|------|---------|
+| 001 | `extensions_and_types.sql` | Enable `pgcrypto`, `citext`; create ENUM types |
+| 002 | `core_auth.sql` | `roles`, `users`, `user_two_factor`, `user_sessions`, `login_attempts`, `password_reset_tokens`, `email_verification_tokens`, `role_changes` |
+| 003 | `access_and_audit.sql` | `entrances_exits`, `digital_record`, `audit_reports`, `notifications`, `notification_attachment` |
+| 004 | `programs.sql` | `programs`, `sub_programs` |
+| 005 | `virtual_records.sql` | `older_adult_family`, `older_adult`, `older_adult_subprogram`, `emergency_contacts`, `clinical_*`, `vaccines` |
+| 006 | `nursing_and_appointments.sql` | `specialized_area`, `specialized_appointment`, `nursing_records`, `physiotherapy_sessions`, `psychology_sessions`, `social_work_reports`, `medical_record` |
+| 007 | `functions.sql` | `clean_expired_sessions()`, `clean_expired_tokens()`, `get_failed_login_stats()`, `log_audit()`, `set_updated_at()` trigger |
+| 008 | `permissions.sql` | `permissions`, `role_permissions` (RBAC catalogue + per-role seeds) |
+| 009 | `role_changes_normalization.sql` | Add nullable `old_role_id` / `new_role_id` FKs to `role_changes` |
+| 011 | `virtual_file_procedures.sql` | `create_virtual_file()`, `delete_virtual_file()`, `get_virtual_file()`, `compute_audit_session_duration()` |
+| 012 | `user_roles_foundation.sql` | Additional role-related tables |
+| — | `seeds/000_seed_roles.sql` | Default roles (8 total) |
 
-Until then, the canonical schema is `scriptDBCompleta.sql` (run as a single script).
+**Note:** There is no `010_*.sql` — the original `010_user_roles_foundation.sql` was renumbered to `012` to resolve the `009` collision.
 
 ---
 
-## 8. Common queries (for AI agents)
+## 8. Common queries (PostgreSQL)
 
 ### 8.1 List all tables
 
 ```sql
-SELECT TABLE_NAME, TABLE_ROWS
-FROM information_schema.TABLES
-WHERE TABLE_SCHEMA = 'hogar_de_ancianos'
-ORDER BY TABLE_NAME;
+SELECT table_name
+FROM information_schema.tables
+WHERE table_schema = 'public'
+ORDER BY table_name;
 ```
 
 ### 8.2 List columns of a table
 
 ```sql
-SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE, COLUMN_KEY, COLUMN_DEFAULT, EXTRA
-FROM information_schema.COLUMNS
-WHERE TABLE_SCHEMA = 'hogar_de_ancianos' AND TABLE_NAME = 'users'
-ORDER BY ORDINAL_POSITION;
+SELECT column_name, data_type, is_nullable, column_default
+FROM information_schema.columns
+WHERE table_name = 'users'
+ORDER BY ordinal_position;
 ```
 
 ### 8.3 List foreign keys of a table
 
 ```sql
 SELECT
-  CONSTRAINT_NAME,
-  COLUMN_NAME,
-  REFERENCED_TABLE_NAME,
-  REFERENCED_COLUMN_NAME
-FROM information_schema.KEY_COLUMN_USAGE
-WHERE TABLE_SCHEMA = 'hogar_de_ancianos'
-  AND TABLE_NAME = 'users'
-  AND REFERENCED_TABLE_NAME IS NOT NULL;
+  tc.constraint_name,
+  kcu.column_name,
+  ccu.table_name AS foreign_table_name,
+  ccu.column_name AS foreign_column_name
+FROM information_schema.table_constraints AS tc
+JOIN information_schema.key_column_usage AS kcu
+  ON tc.constraint_name = kcu.constraint_name
+JOIN information_schema.constraint_column_usage AS ccu
+  ON ccu.constraint_name = tc.constraint_name
+WHERE tc.table_name = 'users'
+  AND tc.constraint_type = 'FOREIGN KEY';
 ```
 
 ### 8.4 Find orphaned rows (broken FKs — should be zero)
@@ -159,39 +173,31 @@ WHERE r.id IS NULL AND u.role_id IS NOT NULL;
 
 ---
 
-## 9. MySQL → Postgres conversion cheat sheet (for ÉPICA 2)
+## 9. How to apply migrations
 
-See `TareasPendientes.md` §ÉPICA 2 and `.opencode/skills/epic-supabase/SKILL.md` for the full guide.
+### Option A — Supabase Dashboard (recommended for first-time)
 
-| MySQL | Postgres |
-|---|---|
-| `AUTO_INCREMENT` | `GENERATED BY DEFAULT AS IDENTITY` or `SERIAL` |
-| `ENUM('a','b')` | `CREATE TYPE ... AS ENUM (...)` or `TEXT` + `CHECK` |
-| `` `backticks` `` | `"quoted"` or unquoted |
-| `DATETIME` | `TIMESTAMPTZ` |
-| `BOOLEAN DEFAULT FALSE` | Compatible |
-| `DELIMITER $$ ... PROCEDURE` | `CREATE OR REPLACE FUNCTION ... RETURNS void LANGUAGE plpgsql` |
-| `ON UPDATE CURRENT_TIMESTAMP` | Trigger `BEFORE UPDATE` or app-level |
+1. Open your Supabase project → **SQL Editor**
+2. Run files in order (001 → 012)
+3. Optionally run `seeds/000_seed_roles.sql`
 
----
+### Option B — Supabase CLI
 
-## 10. Documentation in this repo
+```bash
+# from the repo root
+supabase db push
+```
 
-| File | Purpose |
-|---|---|
-| `AGENTS.md` | This file |
-| `docs/tables-catalog.md` | Every table in the schema |
-| `docs/er-diagram.md` | Relationships (textual) |
-| `docs/migration-history.md` | Execution order + change history |
-| `scriptDBCompleta.sql` | Main schema (canonical today) |
-| `sp-auditoria.sql` | Audit procedure |
-| `clean_all_data.sql` | Dev reset (TRUNCATE all tables) |
-| `data-usuario-auditoria-test.sql` | Test fixtures |
-| `update_audit_reports.sql` | Incremental update for `audit_reports` |
-| `pogrestsql/` | ⚠️ Notifuse Postgres dump — DO NOT use as a migration source |
+### Option C — Direct psql
+
+```bash
+psql "$DATABASE_URL" -f supabase/migrations/001_extensions_and_types.sql
+psql "$DATABASE_URL" -f supabase/migrations/002_core_auth.sql
+# ... repeat for all migrations
+```
 
 ---
 
-## 11. Escalating to the coordinator
+## 10. Escalating to the coordinator
 
 If a task requires changing a backend entity, an API contract, or a frontend service in lockstep, **stop and tell the user**, or invoke the `fullstack-coordinator` agent from the root `.opencode/agents/`.
