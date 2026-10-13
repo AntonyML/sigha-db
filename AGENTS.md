@@ -61,6 +61,11 @@ Comprueba el esquema y el comportamiento afectados con consultas o pruebas
 pertinentes. Que pase en el worktree no sustituye esta verificación. Si falla,
 conserva el worktree para corregirlo y no marques el claim `integrated` ni limpies
 la rama hasta que pase en `dev`.
+Después de que pase, el coordinador elimina el worktree y la rama local con
+`git branch -d`, según `C:\DEV\sigha\AGENTS.md`; nunca fuerces su eliminación.
+Si la integración fue accidental y la migración no se ha aplicado, deshazla
+con `git revert`. Si ya se aplicó, `git revert` no revierte el esquema: crea y
+valida una migración correctiva nueva; nunca edites la migración aplicada.
 
 ---
 
