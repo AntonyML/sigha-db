@@ -1,6 +1,6 @@
 # AGENTS.md — Database (`sigha-db/`)
 
-> **You are an AI agent working on the Supabase/Postgres database of the Hogar de Ancianos platform.**
+> **You are an AI agent working on the Supabase/Postgres database of the Sistema Integral de Gestión Holística y de Asistencia (SIGHA) platform.**
 > This file contains the database-specific rules and the shared Git workflow for this repository.
 
 ---
