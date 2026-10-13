@@ -1,6 +1,6 @@
 -- =============================================================================
 -- 004_programs.sql
--- Programs and sub-programs (hogar activities).
+-- Programs and sub-programs (SIGHA activities).
 -- Run after 003.
 -- =============================================================================
 

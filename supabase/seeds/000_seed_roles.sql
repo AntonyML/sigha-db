@@ -1,6 +1,6 @@
 -- =============================================================================
 -- 000_seed_roles.sql (optional, run after all numbered migrations)
--- Seeds the default roles for the Hogar de Ancianos platform.
+-- Seeds the default roles for the Sistema Integral de Gestión Holística y de Asistencia (SIGHA) platform.
 -- Safe to re-run: uses ON CONFLICT DO NOTHING.
 -- =============================================================================
 
