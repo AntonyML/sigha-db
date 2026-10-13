@@ -51,6 +51,17 @@ Si `status`/`diff` muestra SQL que no escribiste, otro agente tocó tu migració
 
 Commit en tu rama, `git status` limpio, marca tu claim `done`/`blocked` y entrega: rama, worktree, `baseSha`, número de migración, `git diff --stat`, archivos tocados, cómo aplicaste/verificaste la migración (Dashboard SQL / `supabase db push` / `psql`) y nota lista para `CHANGELOG.md`. **No edites `CHANGELOG.md`**: solo el coordinador lo actualiza tras integrar.
 
+### Verificación posterior al merge en `dev` (coordinador)
+
+Después de que el agente entregue la rama como `done`, el coordinador hace el
+merge a `dev` y comprueba el cambio desde el checkout principal. Para cambios
+de esquema, valida la migración en el proyecto Supabase de desarrollo y confirma
+el destino antes de aplicarla; nunca uses producción para esta verificación.
+Comprueba el esquema y el comportamiento afectados con consultas o pruebas
+pertinentes. Que pase en el worktree no sustituye esta verificación. Si falla,
+conserva el worktree para corregirlo y no marques el claim `integrated` ni limpies
+la rama hasta que pase en `dev`.
+
 ---
 
 ## 1. Stack
