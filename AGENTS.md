@@ -1,17 +1,41 @@
 # AGENTS.md — Database (`sigha-db/`)
 
 > **You are an AI agent working on the Supabase/Postgres database of the Hogar de Ancianos platform.**
-> Read the root `AGENTS.md` first, then this file.
+> This file contains the database-specific rules and the shared Git workflow for this repository.
 
 ---
 
 ## 0. Scope and authority
 
-- **You work only inside `E:\Dev\TCU\sigha-db\`.**
-- **You do not edit** `backend/` entities, `frontend/`, or root files (except with explicit permission).
+- **Work only in the `sigha-db` repository.** Cross-repository work is assigned to a separate agent and worktree for each repository.
 - **You do not push** to the remote. The user reviews and pushes.
 - **You do not amend** published commits.
 - **You do not** commit production data dumps (only structure, migrations, and seed data).
+
+## Coordinación de agentes y Git
+
+### Identidad y alcance
+
+Al iniciar, identifica tu trabajo con: `Agente: <id/rol> | proyecto: sigha-db | rama: <rama> | worktree: <ruta> | archivos: <alcance>`. El coordinador asigna archivos y evita que dos agentes editen los mismos archivos. Para cambios de frontend, API y base de datos, asigna un agente y un worktree por repositorio; acuerden los contratos compartidos antes de trabajar en paralelo.
+
+### Ramas y worktrees
+
+- `dev` es la rama de integración. Cada agente trabaja en un worktree exclusivo y una rama única `agent/<id>/<tarea>`, creada desde `dev`; usa `~/worktrees/sigha-db/<id>-<tarea>` como ubicación del worktree.
+- Si no existe `dev` local ni `origin/dev`, detén la creación de ramas y pide al mantenedor que establezca `dev` desde una base aprobada. `main` queda reservada: no hagas checkout, no bases ramas de tarea en ella ni la uses como destino de commit, merge o integración.
+- No compartas worktrees, ramas ni sesiones de edición. Cada agente confirma cambios únicamente en su propia rama.
+- Para analizar arquitectura, flujos o impacto, consulta CodeGraph antes de buscar archivos. Cada worktree necesita su propio `.codegraph/`; si falta, ejecuta `gentle-ai codegraph init --cwd <ruta-del-worktree>`. No copies ni compartas índices. Después de editar, deja sincronizar al watcher; usa `codegraph sync` solo si está apagado o el índice queda desactualizado.
+
+### Operaciones Git y bloqueos
+
+- El coordinador serializa por repositorio la creación o eliminación de worktrees y ramas, y toda integración o rebase sobre `dev`. Los agentes pueden implementar y verificar en paralelo en sus worktrees.
+- Ejecuta como máximo un comando Git a la vez en cada worktree. Si Git informa que hay un lock, espera y localiza el proceso propietario; no borres archivos `.lock` mientras un proceso Git pueda estar activo.
+- No hagas push ni amend de commits publicados; el usuario conserva la revisión y publicación remotas.
+
+### Integración y registro
+
+El agente entrega al coordinador el resumen, archivos modificados y verificaciones realizadas. El coordinador integra ramas completadas a `dev`, una por una y en orden de dependencias. Solo el coordinador actualiza `CHANGELOG.md` después de cada integración; los agentes entregan una nota lista para registrar, sin editar ese archivo.
+
+Para cambios de esquema en paralelo, el coordinador reserva por adelantado un número de migración distinto para cada tarea. No reutilices un número asignado ni edites migraciones que ya se aplicaron.
 
 ---
 
@@ -197,7 +221,3 @@ psql "$DATABASE_URL" -f supabase/migrations/002_core_auth.sql
 ```
 
 ---
-
-## 10. Escalating to the coordinator
-
-If a task requires changing a backend entity, an API contract, or a frontend service in lockstep, **stop and tell the user**, or invoke the `fullstack-coordinator` agent from the root `.opencode/agents/`.
