@@ -12,30 +12,44 @@
 - **You do not amend** published commits.
 - **You do not** commit production data dumps (only structure, migrations, and seed data).
 
-## Coordinación de agentes y Git
+## Coordinación de agentes y Git (protocolo multi-agente)
+
+> Protocolo maestro: `C:\DEV\sigha\AGENTS.md` — **manda sobre esta sección**.
+> Lo de abajo es el resumen operativo para `sigha-db`; claims, regla STOP y
+> limpieza se definen ahí.
 
 ### Identidad y alcance
 
-Al iniciar, identifica tu trabajo con: `Agente: <id/rol> | proyecto: sigha-db | rama: <rama> | worktree: <ruta> | archivos: <alcance>`. El coordinador asigna archivos y evita que dos agentes editen los mismos archivos. Para cambios de frontend, API y base de datos, asigna un agente y un worktree por repositorio; acuerden los contratos compartidos antes de trabajar en paralelo.
+Al iniciar, identifícate con: `Agente: <id/rol> | repo: sigha-db | rama: agent/<id>/<tarea> | worktree: C:\DEV\sigha\_wt\sigha-db\<id>-<tarea> | archivos: <alcance> | base: <sha de dev> | migración: <NNN>`. El coordinador (por defecto: el usuario) asigna archivos **y reserva por adelantado un número de migración distinto por tarea**; **dos agentes nunca reclaman el mismo archivo ni el mismo número**. Contratos compartidos con api/web (esquema ↔ entidades ↔ DTOs) se acuerdan **antes** de trabajar en paralelo, no durante.
 
-### Ramas y worktrees
+### Checkout principal: intocable
 
-- `dev` es la rama de integración. Cada agente trabaja en un worktree exclusivo y una rama única `agent/<id>/<tarea>`, creada desde `dev`; usa `~/worktrees/sigha-db/<id>-<tarea>` como ubicación del worktree.
-- Si no existe `dev` local ni `origin/dev`, detén la creación de ramas y pide al mantenedor que establezca `dev` desde una base aprobada. `main` queda reservada: no hagas checkout, no bases ramas de tarea en ella ni la uses como destino de commit, merge o integración.
-- No compartas worktrees, ramas ni sesiones de edición. Cada agente confirma cambios únicamente en su propia rama.
-- Para analizar arquitectura, flujos o impacto, consulta CodeGraph antes de buscar archivos. Cada worktree necesita su propio `.codegraph/`; si falta, ejecuta `gentle-ai codegraph init --cwd <ruta-del-worktree>`. No copies ni compartas índices. Después de editar, deja sincronizar al watcher; usa `codegraph sync` solo si está apagado o el índice queda desactualizado.
+- `C:\DEV\sigha\sigha-db` **siempre está en `dev`, siempre está limpio y NO se edita.** Solo el coordinador lo toca, y solo para integrar ramas terminadas una por una.
+- Prohibido para agentes: editarlo, hacer `checkout`/`switch` en él, commitear dumps de producción (solo estructura, migraciones y seeds).
 
-### Operaciones Git y bloqueos
+### Tu worktree (uno por agente × tarea)
 
-- El coordinador serializa por repositorio la creación o eliminación de worktrees y ramas, y toda integración o rebase sobre `dev`. Los agentes pueden implementar y verificar en paralelo en sus worktrees.
-- Ejecuta como máximo un comando Git a la vez en cada worktree. Si Git informa que hay un lock, espera y localiza el proceso propietario; no borres archivos `.lock` mientras un proceso Git pueda estar activo.
-- No hagas push ni amend de commits publicados; el usuario conserva la revisión y publicación remotas.
+- Ruta canónica: `C:\DEV\sigha\_wt\sigha-db\<id>-<tarea>`, rama `agent/<id>/<tarea>` creada desde `origin/dev` recién traído. ⛔ Ruta vieja `~/worktrees/...` deprecada: no crear nada ahí.
+- Si no existe `origin/dev` ni `dev`, STOP y pide al mantenedor que fije `dev`. `main` queda reservada: no basar ramas en ella ni integrarle nada.
+- Secuencia obligatoria (una operación Git a la vez; con lock: esperar, nunca borrar `.lock` con proceso vivo):
+  1. `git -C C:\DEV\sigha\sigha-db worktree list` + `status --short --branch` + `log --oneline -5` (solo lectura).
+  2. Leer `C:\DEV\sigha\_wt\_claims\sigha-db.json`: si un claim `active` cubre tus archivos o tu número de migración → STOP, pide reasignación. Si libre → registra archivos + número **antes** de crear la rama.
+  3. `git -C C:\DEV\sigha\sigha-db fetch origin dev` y `worktree add "C:\DEV\sigha\_wt\sigha-db\<id>-<tarea>" -b "agent/<id>/<tarea>" origin/dev`.
+- No compartas worktree, rama ni sesión de edición. No hagas `merge` a `dev`, `push`, `rebase` por tu cuenta ni `amend` de commits publicados.
+- CodeGraph: cada worktree usa su propio `.codegraph/` (`gentle-ai codegraph init --cwd <tu-worktree>` si falta); no copiar ni compartir índices.
 
-### Integración y registro
+### Migraciones en paralelo (reserva obligatoria)
 
-El agente entrega al coordinador el resumen, archivos modificados y verificaciones realizadas. El coordinador integra ramas completadas a `dev`, una por una y en orden de dependencias. Solo el coordinador actualiza `CHANGELOG.md` después de cada integración; los agentes entregan una nota lista para registrar, sin editar ese archivo.
+- El coordinador reserva el número **antes** de que trabajes (ej. `013_...`, `014_...`, uno distinto por tarea). No reutilices un número asignado a otro claim.
+- **No edites migraciones ya aplicadas** (001–012 y cualquiera integrada en `dev`): todo cambio va en un archivo nuevo numerado. SQL idempotente (`CREATE TABLE IF NOT EXISTS`, índices).
 
-Para cambios de esquema en paralelo, el coordinador reserva por adelantado un número de migración distinto para cada tarea. No reutilices un número asignado ni edites migraciones que ya se aplicaron.
+### Regla STOP ante diffs ajenos
+
+Si `status`/`diff` muestra SQL que no escribiste, otro agente tocó tu migración o un `log` trae commits inesperados: **para de editar, no sobrescribas, no hagas commit "para salvar lo tuyo"**. Diagnostica en solo lectura (`status`, `diff --stat`, `log --oneline -5` en tu worktree, relee el archivo, compara claims) y reporta al coordinador archivo + cambio inesperado + tu `baseSha` vs `HEAD` + rama sospechosa. **"Releer y seguir" sin atribuir el cambio está prohibido.** Detalle en `C:\DEV\sigha\AGENTS.md` §5.
+
+### Entrega al coordinador (no integras tú)
+
+Commit en tu rama, `git status` limpio, marca tu claim `done`/`blocked` y entrega: rama, worktree, `baseSha`, número de migración, `git diff --stat`, archivos tocados, cómo aplicaste/verificaste la migración (Dashboard SQL / `supabase db push` / `psql`) y nota lista para `CHANGELOG.md`. **No edites `CHANGELOG.md`**: solo el coordinador lo actualiza tras integrar.
 
 ---
 
