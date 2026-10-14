@@ -102,7 +102,8 @@ sigha-db/
 │   │   ├── 015_organizations.sql
 │   │   ├── 016_older_adult_location.sql
 │   │   ├── 017_document_type.sql
-│   │   └── 018_roles_name_to_varchar.sql
+│   │   ├── 018_roles_name_to_varchar.sql
+│   │   └── 019_virtual_file_required_family.sql
 │   └── seeds/
 │       └── 000_seed_roles.sql
 └── AGENTS.md
@@ -185,6 +186,7 @@ Migrations are executed in alphabetical order by filename. Current order:
 | 016 | `older_adult_location.sql` | Structured province/canton/district for older adults |
 | 017 | `document_type.sql` | Document type for older adults and family members |
 | 018 | `roles_name_to_varchar.sql` | Allow custom role names up to 100 characters |
+| 019 | `virtual_file_required_family.sql` | `create_virtual_file()`: full family required, document types persisted, conditional validations |
 | — | `seeds/000_seed_roles.sql` | Default roles (8 total) |
 
 **Note:** There is no `010_*.sql` — the original `010_user_roles_foundation.sql` was renumbered to `012` to resolve the `009` collision.
