@@ -96,7 +96,13 @@ sigha-db/
 │   │   ├── 008_permissions.sql
 │   │   ├── 009_role_changes_normalization.sql
 │   │   ├── 011_virtual_file_procedures.sql
-│   │   └── 012_user_roles_foundation.sql
+│   │   ├── 012_user_roles_foundation.sql
+│   │   ├── 013_system_user.sql
+│   │   ├── 014_system_user_email.sql
+│   │   ├── 015_organizations.sql
+│   │   ├── 016_older_adult_location.sql
+│   │   ├── 017_document_type.sql
+│   │   └── 018_roles_name_to_varchar.sql
 │   └── seeds/
 │       └── 000_seed_roles.sql
 └── AGENTS.md
@@ -173,6 +179,12 @@ Migrations are executed in alphabetical order by filename. Current order:
 | 009 | `role_changes_normalization.sql` | Add nullable `old_role_id` / `new_role_id` FKs to `role_changes` |
 | 011 | `virtual_file_procedures.sql` | `create_virtual_file()`, `delete_virtual_file()`, `get_virtual_file()`, `compute_audit_session_duration()` |
 | 012 | `user_roles_foundation.sql` | Additional role-related tables |
+| 013 | `system_user.sql` | Reserved system user for automated/audit actions |
+| 014 | `system_user_email.sql` | Update the reserved system user's email to the SIGHA identity |
+| 015 | `organizations.sql` | `organizations`, `organization_members`, and ASOPOGUA membership seed |
+| 016 | `older_adult_location.sql` | Structured province/canton/district for older adults |
+| 017 | `document_type.sql` | Document type for older adults and family members |
+| 018 | `roles_name_to_varchar.sql` | Allow custom role names up to 100 characters |
 | — | `seeds/000_seed_roles.sql` | Default roles (8 total) |
 
 **Note:** There is no `010_*.sql` — the original `010_user_roles_foundation.sql` was renumbered to `012` to resolve the `009` collision.
