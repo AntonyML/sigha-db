@@ -104,7 +104,8 @@ sigha-db/
 │   │   ├── 017_document_type.sql
 │   │   ├── 018_roles_name_to_varchar.sql
 │   │   ├── 019_virtual_file_required_family.sql
-│   │   └── 020_delete_virtual_file_cascade_updates.sql
+│   │   ├── 020_delete_virtual_file_cascade_updates.sql
+│   │   └── 021_catalogs_medications_vaccines.sql
 │   └── seeds/
 │       └── 000_seed_roles.sql
 └── AGENTS.md
@@ -189,6 +190,7 @@ Migrations are executed in alphabetical order by filename. Current order:
 | 018 | `roles_name_to_varchar.sql` | Allow custom role names up to 100 characters |
 | 019 | `virtual_file_required_family.sql` | `create_virtual_file()`: full family required, document types persisted, conditional validations |
 | 020 | `020_delete_virtual_file_cascade_updates.sql` | `older_adult_updates.fk_oau_adult` ON DELETE CASCADE y `delete_virtual_file()` defensivo |
+| 021 | `021_catalogs_medications_vaccines.sql` | Catálogo CIE-10, `patient_conditions`, vademécum, `medication_prescriptions`, Kardex MAR `medication_administrations` y `patient_vaccinations` |
 | — | `seeds/000_seed_roles.sql` | Default roles (8 total) |
 
 **Note:** There is no `010_*.sql` — the original `010_user_roles_foundation.sql` was renumbered to `012` to resolve the `009` collision.
