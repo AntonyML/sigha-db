@@ -110,6 +110,10 @@ async function runMigration026Checks(client) {
     [tenantId],
   );
   assert.equal(actor.rowCount, 1, 'development tenant needs a member for signature checks');
+  const defaultRole = await client.query(
+    `SELECT id FROM public.roles WHERE lower(trim(r_name)) = 'not specified'`,
+  );
+  assert.equal(defaultRole.rowCount, 1, 'the default organization role must exist exactly once');
 
   const scheduledRows = await client.query(
     `SELECT count(*)::int AS count FROM public.medication_administrations WHERE status::text = 'scheduled'`,
@@ -166,6 +170,13 @@ async function runMigration026Checks(client) {
       [newUserId],
     );
     assert.equal(newUserVisible.rowCount, 1, 'tenant user creation must create a visible member');
+    const newMembership = await client.query(
+      `SELECT role_id FROM public.organization_members
+        WHERE organization_id=$1 AND user_id=$2`,
+      [tenantId, newUserId],
+    );
+    assert.equal(newMembership.rowCount, 1, 'tenant user creation must create a membership');
+    assert.equal(Number(newMembership.rows[0].role_id), Number(defaultRole.rows[0].id));
 
     const memoId = -1 - Math.floor(Math.random() * 1_000_000_000);
     const acknowledgmentId = memoId - 1;
