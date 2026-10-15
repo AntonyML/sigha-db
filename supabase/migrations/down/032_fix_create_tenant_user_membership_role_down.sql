@@ -1,0 +1,4 @@
+-- Intentionally a no-op. Reverting to the pre-032 function would make
+-- create_tenant_user fail every time because migration 030 made
+-- organization_members.role_id NOT NULL. A safe rollback requires a separate
+-- forward migration that also changes that schema invariant.
