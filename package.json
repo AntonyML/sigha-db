@@ -3,7 +3,13 @@
   "private": true,
   "scripts": {
     "apply:migration026": "bun scripts/apply-migration026.cjs",
-    "test:migration026": "bun scripts/migration026.cjs"
+    "test:migration026": "bun scripts/migration026.cjs",
+    "apply:migration027": "bun scripts/apply-migration027.cjs",
+    "test:migration027": "bun scripts/migration027.cjs",
+    "apply:migration029": "bun scripts/apply-migration029.cjs",
+    "test:migration029": "bun scripts/migration029.cjs",
+    "apply:migration030": "bun scripts/apply-migration030.cjs",
+    "test:migration030": "bun scripts/migration030.cjs"
   },
   "devDependencies": {
     "pg": "^8.16.3"
