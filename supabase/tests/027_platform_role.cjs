@@ -49,10 +49,15 @@ async function runMigration027Checks(client) {
   assert.equal(index.rowCount, 1, 'idx_users_platform_role must exist');
   assert.match(index.rows[0].indexdef, /WHERE \(platform_role IS NOT NULL\)/i, 'the index must be partial on platform_role');
 
-  const assigned = await client.query(
-    `SELECT count(*)::int AS count FROM public.users WHERE platform_role IS NOT NULL`,
+  // Migration 027 only adds the column; later migrations (e.g. 030) do assign
+  // platform roles, so this asserts label validity instead of global emptiness.
+  const invalidAssigned = await client.query(
+    `SELECT count(*)::int AS count
+       FROM public.users
+      WHERE platform_role IS NOT NULL
+        AND platform_role NOT IN ('PLATFORM_OWNER', 'PLATFORM_SUPPORT')`,
   );
-  assert.equal(assigned.rows[0].count, 0, 'migration 027 must not assign any platform role');
+  assert.equal(invalidAssigned.rows[0].count, 0, 'only valid platform role labels may be assigned');
 
   await client.query('BEGIN');
   try {
