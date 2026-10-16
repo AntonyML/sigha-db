@@ -13,7 +13,9 @@
     "apply:migration031": "bun scripts/apply-migration031.cjs",
     "test:migration031": "bun scripts/migration031.cjs",
     "apply:migration032": "bun scripts/apply-migration032.cjs",
-    "test:migration032": "bun scripts/migration032.cjs"
+    "test:migration032": "bun scripts/migration032.cjs",
+    "apply:migration033": "bun scripts/apply-migration033.cjs",
+    "test:migration033": "bun scripts/migration033.cjs"
   },
   "devDependencies": {
     "pg": "^8.16.3"
