@@ -3,6 +3,7 @@
 Registra aquí solo cambios integrados en `dev`. El agente que integra agrega una entrada bajo el lock `dev-sigha-db` tras re-verificar el cambio en `dev`; las demás tareas no editan este archivo.
 
 Formato: `YYYY-MM-DD | <taskId> | tipo: resumen | verificación: resultado`.
+2026-10-16 | sigha-db-20261016-gkdz | tipo: feat refactorización arquitectónica DDD y baseline limpio 001_baseline.sql (6 esquemas modulares, UUIDv7, PerfilDigital dinámico JSONB+GIN, Bitácora Operativa, RLS y vistas analíticas) | verificación: apply:baseline PASS en Supabase dev; test:baseline PASS (12 suites completas: schemas, uuidv7, seeds, dynamic template, GIN, GiST 23P01, bitacora, imc generado, v_resumen_residentes)
 2026-10-14 | sigha-db-20261014-w7n2 | tipo: feat Frente 4: migracion 023 health_lifestyle (evaluaciones de estilo de vida, nutricion, descanso e hidratacion) | verificacion: aplicada y validada en Supabase dev; 26 columnas verificadas en information_schema, triggers y FKs OK
 2026-10-15 | sigha-db-20261015-m4k2 | feat: migracion 025 resident_memos bitacora y derivaciones interdepartamentales estilo memos | verificacion: aplicada y validada en Supabase dev; 18 columnas verificadas en information_schema, triggers, enums y FKs OK
 2026-10-13 | sigha-db-20261013-9moj | feat: crear organizations y organization_members; migrar usuarios a ASOPOGUA | verificación: Supabase dev 50/50 memberships primarias, 0 huérfanos; re-aplicación idempotente OK
