@@ -2,6 +2,8 @@
   "name": "sigha-db-migrations",
   "private": true,
   "scripts": {
+    "apply:baseline": "bun scripts/apply-baseline.cjs",
+    "test:baseline": "bun scripts/test-baseline.cjs",
     "apply:migration026": "bun scripts/apply-migration026.cjs",
     "test:migration026": "bun scripts/migration026.cjs",
     "apply:migration027": "bun scripts/apply-migration027.cjs",
